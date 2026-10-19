@@ -80,7 +80,11 @@ class NativeAppTest {
         screenshot("12-deposit-form")
         field("amount", "250000"); field("rate", "13.5"); field("term", "37")
         rule.onNodeWithContentDescription("Пополнение").performScrollTo().performClick()
+        screenshot("15-deposit-options")
         rule.onNodeWithText("Раз в месяц").performClick()
+        rule.onNodeWithContentDescription("Капитализация процентов").performScrollTo().performClick()
+        screenshot("16-capitalization-options")
+        rule.onNode(hasText("Ежемесячно") and hasAnyAncestor(isDialog())).performClick()
         field("addition", "7500")
         calculate()
         rule.runOnIdle { assertTrue(model.state.current!!.result.finalAmount > 600000) }

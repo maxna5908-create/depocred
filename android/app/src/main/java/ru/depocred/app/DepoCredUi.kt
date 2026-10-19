@@ -379,13 +379,7 @@ private val NumberGrouping = VisualTransformation { input ->
             }
         }
     }
-    if (open) AppDialog(label, onClose = { open = false }) {
-                options.forEach { (key, title) ->
-                    Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(key); open = false }, color = if (key == value) p.primary else p.field, shape = RoundedCornerShape(12.dp)) {
-                        Text(title, fontSize = 14.sp, color = if (key == value) Color.White else p.text, modifier = Modifier.padding(16.dp), fontWeight = FontWeight.SemiBold)
-                    }
-                }
-    }
+    if (open) ChoiceDialog(if (label == "Пополнение") "Период пополнения" else "Частота капитализации", value, options, { open = false }) { onSelect(it); open = false }
 }
 
 @Composable private fun Metric(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: (() -> Unit)? = null) {

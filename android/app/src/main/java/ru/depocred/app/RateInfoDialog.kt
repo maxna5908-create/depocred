@@ -5,12 +5,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -19,8 +21,43 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import java.util.Locale
 import kotlin.math.pow
+
+/** Deposit selectors have their own 24px card, as in DepositCalculator.tsx. */
+@Composable internal fun ChoiceDialog(title: String, selected: String, options: List<Pair<String, String>>, onClose: () -> Unit, onSelect: (String) -> Unit) {
+    val p = LocalPalette.current
+    val height = LocalConfiguration.current.screenHeightDp.dp
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val view = LocalView.current
+        SideEffect { (view.parent as? DialogWindowProvider)?.window?.setDimAmount(.6f) }
+        Surface(Modifier.padding(24.dp).widthIn(max = 384.dp).fillMaxWidth().heightIn(max = height * .9f), shape = RoundedCornerShape(24.dp), color = if (p.dark) p.solid else Color.White, border = BorderStroke(1.dp, if (p.dark) Color.White.copy(alpha = .1f) else Color(0xFFE2E8F0))) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Column(Modifier.width(IntrinsicSize.Max)) {
+                            Text(title, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold, color = p.text)
+                            Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(2.dp).background(p.primary))
+                        }
+                    }
+                    IconButton(onClick = onClose) { Glyph(R.drawable.lucide_x, "Закрыть окно", p.muted, 20) }
+                }
+                Column(Modifier.weight(1f, fill = false).heightIn(max = height * .6f).clipToBounds().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    options.forEach { (key, label) ->
+                        val active = key == selected
+                        Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(key) }, shape = RoundedCornerShape(12.dp), color = if (active) p.primary else if (p.dark) Color.White.copy(alpha = .05f) else p.field) {
+                            Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(label, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, color = if (active) Color.White else p.text, modifier = Modifier.weight(1f))
+                                if (active) Box(Modifier.size(8.dp).background(Color.White, RoundedCornerShape(4.dp)))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /** Shared original PWA dialog: fixed header/footer, bounded scrolling body. */
 @Composable internal fun AppDialog(
