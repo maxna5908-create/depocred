@@ -9,6 +9,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.text.input.ImeAction
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -33,6 +36,71 @@ class NativeAppTest {
     private fun calculate() {
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
         rule.waitUntil(120000) { model.state.current != null }
+    }
+    private fun keyboard(visible: Boolean) {
+        rule.waitUntil(15000) { ViewCompat.getRootWindowInsets(rule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == visible }
+    }
+    private fun next(from: String, to: String) {
+        rule.onNodeWithTag("field_$from").assert(hasImeAction(ImeAction.Next)).performImeAction()
+        rule.onNodeWithTag("field_$to").assertIsFocused().assertIsDisplayed()
+        keyboard(true)
+    }
+    @Test fun keyboardFollowsEditableFieldsAndKeepsLastFieldVisible() {
+        rule.onNodeWithText("Прямой").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(200)
+        screenshot("17-panel-pressed")
+        rule.onNodeWithText("Прямой").performTouchInput { up() }
+        rule.onNodeWithTag("field_amount").performScrollTo().performClick().performTextReplacement("1000000")
+        keyboard(true)
+        next("amount", "rate"); rule.onNodeWithTag("field_rate").performTextReplacement("12")
+        next("rate", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
+        next("term", "fixed"); next("fixed", "commission")
+        rule.onNodeWithTag("field_commission").assert(hasImeAction(ImeAction.Done)).performImeAction()
+        keyboard(false)
+        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithTag("field_amount").performScrollTo().performClick().performTextReplacement("1000000")
+        next("amount", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
+        next("term", "payment"); rule.onNodeWithTag("field_payment").performTextReplacement("90000")
+        rule.runOnIdle { assertEquals("total", model.state.form.target) }
+        rule.onNodeWithTag("field_total").assertIsNotEnabled()
+        next("payment", "down")
+        screenshot("18-long-form-next")
+        rule.onNodeWithTag("field_down").assert(hasImeAction(ImeAction.Done)).performImeAction()
+        keyboard(false)
+        rule.onNodeWithTag("tab_deposit").performClick()
+        rule.onNodeWithTag("field_term").performScrollTo().performClick().assert(hasImeAction(ImeAction.Done)).performImeAction()
+        keyboard(false)
+        rule.onNodeWithContentDescription("Пополнение").performScrollTo().performClick()
+        rule.onNodeWithText("Раз в месяц").performClick()
+        rule.onNodeWithTag("field_term").performScrollTo().performClick()
+        next("term", "addition")
+        screenshot("19-deposit-next")
+        rule.onNodeWithTag("field_addition").assert(hasImeAction(ImeAction.Done)).performImeAction()
+        keyboard(false)
+    }
+    @Test fun missingInputsShowNoticeAndFocusTheRequiredField() {
+        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithText("Укажите сумму для расчёта").assertExists()
+        rule.onNodeWithTag("field_amount").assertIsFocused().assertIsDisplayed()
+        keyboard(true)
+        screenshot("20-required-amount")
+        rule.onNodeWithTag("field_amount").performTextReplacement("1000000")
+        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("field_rate").assertIsFocused().assertIsDisplayed()
+        keyboard(true)
+        rule.onNodeWithTag("field_rate").performTextReplacement("0")
+        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("field_term").assertIsFocused().assertIsDisplayed()
+        keyboard(true)
+        rule.onNodeWithTag("field_term").performTextReplacement("12")
+        calculate(); keyboard(false)
+        rule.runOnIdle { assertEquals(0.0, model.state.current!!.result.totalInterest, .001) }
+        rule.onNodeWithTag("tab_deposit").performClick()
+        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("field_amount").assertIsFocused().assertIsDisplayed()
+        keyboard(true)
     }
     private fun screenshot(name: String) {
         rule.runOnIdle { model.clearNotice() }

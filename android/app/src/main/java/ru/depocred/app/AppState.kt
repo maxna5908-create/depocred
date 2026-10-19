@@ -26,6 +26,7 @@ data class Form(
 }
 fun emptyForm(loan: Boolean, reverse: Boolean) = Form(if (loan) mapOf("paymentType" to if (reverse) "" else "annuity") else mapOf("cap" to "monthly", "period" to "none"))
 data class SavedCalculation(val id: String = UUID.randomUUID().toString(), val timestamp: Long = System.currentTimeMillis(), val mode: String, val result: Calculation)
+data class InputFocusRequest(val formKey: String, val field: String, val sequence: Long)
 data class UiState(
     val tab: String = "loan", val settings: Settings = Settings(),
     val loanReverse: Boolean = false, val depositReverse: Boolean = false,
@@ -122,6 +123,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var notice by mutableStateOf(store.recoveryNotice)
         private set
+    var inputFocusRequest by mutableStateOf<InputFocusRequest?>(null)
+        private set
+    private var focusSequence = 0L
+    fun consumeInputFocus(sequence: Long) {
+        if (inputFocusRequest?.sequence == sequence) inputFocusRequest = null
+    }
     private var saveJob: Job? = null
     private var calculationJob: Job? = null
     fun notify(text: String) { notice = text }
@@ -191,9 +198,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         state = state.copy(forms = state.forms + (state.formKey to emptyForm(state.tab == "loan", state.reverse)), current = null, calculating = false)
         persist()
     }
-    fun calculate() {
+    fun calculate(): Boolean {
         calculationJob?.cancel()
         val snapshot = state
+        snapshot.requiredInput()?.let { (field, message) ->
+            state = state.copy(calculating = false)
+            // A failed automatic reverse solve must focus an editable source field.
+            val editable = if (snapshot.tab == "loan" && snapshot.reverse && field == snapshot.form.target)
+                listOf("term", "payment", "total").first { it != field } else field
+            inputFocusRequest = InputFocusRequest(snapshot.formKey, editable, ++focusSequence)
+            notify(message)
+            return false
+        }
         state = state.copy(calculating = true)
         calculationJob = viewModelScope.launch {
             try {
@@ -220,6 +236,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { state = state.copy(calculating = false); notify(e.message ?: "Проверьте параметры расчёта") }
         }
+        return true
     }
     fun paymentType(type: String) {
         val recalculate = state.current != null
@@ -233,5 +250,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         notify("Текущий расчёт сохранён в историю расчётов")
     }
     fun delete(id: String) { state = state.copy(history = state.history.filter { it.id != id }); persist(true) }
+}
+// Required inputs follow the visible form order; an explicitly entered zero rate is valid.
+private fun UiState.requiredInput(): Pair<String, String>? {
+    val f = form
+    if (f.text("amount").isBlank() || f.number("amount") <= 0) return "amount" to "Укажите сумму для расчёта"
+    if (tab == "loan" && reverse) {
+        if (f.text("paymentType").isBlank()) return "paymentType" to "Выберите тип платежа"
+        if (f.number("term") !in 1.0..999.0) return "term" to "Укажите срок от 1 до 999 месяцев"
+        if (f.number("payment") <= 0) return "payment" to "Заполните любые два значения из трёх"
+        if (f.number("total") <= 0) return "total" to "Заполните любые два значения из трёх"
+    } else {
+        if (tab == "deposit" && reverse) {
+            f.autoError?.let { return (f.target ?: "final") to it }
+            if (f.number("final") <= 0) return "final" to "Заполните три параметра депозита"
+        }
+        if (f.text("rate").isBlank()) return "rate" to if (reverse) "Заполните три параметра депозита" else "Укажите процентную ставку (в том числе 0%)"
+        if (f.number("term") !in 1.0..999.0) return "term" to "Укажите срок от 1 до 999 месяцев"
+    }
+    return null
 }
 fun numberText(value: Double): String = if (value == value.toLong().toDouble()) value.toLong().toString() else java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()

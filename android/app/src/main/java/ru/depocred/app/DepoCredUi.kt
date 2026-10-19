@@ -15,6 +15,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -215,7 +220,7 @@ private fun Modifier.selectableCompat(selected: Boolean, onClick: () -> Unit) = 
 
 // CSS box-shadow excludes the interior. A translucent Material Surface with elevation
 // shows its own shadow through the card and produces the grey inset/bevel seen in v25.
-private fun Modifier.outsideShadow(shape: RoundedCornerShape, opacity: Float) = drawWithCache {
+internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCache {
     val outline = shape.createOutline(size, layoutDirection, this)
     val path = Path().apply { addOutline(outline) }
     val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -257,11 +262,16 @@ private fun Modifier.outsideShadow(shape: RoundedCornerShape, opacity: Float) = 
 @Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false) {
     val p = LocalPalette.current
     val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val navigation = LocalFormNavigation.current
+    val next = navigation?.next(key)
     var focused by remember { mutableStateOf(false) }
     val fieldStyle = TextStyle(fontFamily = Inter, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (calculated) p.primary else p.text)
     val measurer = rememberTextMeasurer()
     val suffixX = with(LocalDensity.current) { measurer.measure(NumberGrouping.filter(AnnotatedString(form.text(key))).text, fieldStyle).size.width.toDp() + 4.dp }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(focused, imeBottom) { if (focused) navigation?.bringIntoView?.get(key)?.bringIntoView() }
+    Column(modifier.then(navigation?.bringIntoView?.get(key)?.let { Modifier.bringIntoViewRequester(it) } ?: Modifier), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Label(label)
         BasicTextField(value = form.text(key), onValueChange = { raw ->
             val value = raw.replace(',', '.').replace(" ", "").replace("\u00a0", "")
@@ -269,9 +279,9 @@ private fun Modifier.outsideShadow(shape: RoundedCornerShape, opacity: Float) = 
             if (pattern.matches(value)) onEdit(key, value)
         }, enabled = enabled && !(calculated && lockCalculated), singleLine = true, visualTransformation = NumberGrouping,
             textStyle = fieldStyle,
-            keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }), cursorBrush = SolidColor(p.primary),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).onFocusChanged { focused = it.isFocused }.testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
+            keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = if (next == null) ImeAction.Done else ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { next?.let { navigation?.focus(it) } }, onDone = { focus.clearFocus(); keyboard?.hide() }), cursorBrush = SolidColor(p.primary),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(navigation?.requesters?.get(key)?.let { Modifier.focusRequester(it) } ?: Modifier).onFocusChanged { focused = it.isFocused }.testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
                 .clip(RoundedCornerShape(12.dp)).background(if (calculated) p.primary.copy(alpha = .05f) else if (enabled) p.field else p.field.copy(alpha = p.field.alpha * .5f)).border(1.dp, if (focused) p.primary else if (calculated) p.primary.copy(alpha = .4f) else if (enabled) p.border else p.border.copy(alpha = p.border.alpha * .5f), RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,16 +315,26 @@ private val NumberGrouping = VisualTransformation { input ->
     val loan = state.tab == "loan"
     val form = state.form
     val focus = LocalFocusManager.current
-    Column {
-        Row {
-            listOf(false to "Прямой", true to "Обратный").forEach { (reverse, title) ->
-                val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                Box(Modifier.weight(1f).height(42.dp).clip(shape).background(if (state.reverse == reverse) p.glass else Color.Transparent).border(1.dp, if (state.reverse == reverse) p.border else Color.Transparent, shape).selectableCompat(state.reverse == reverse) { focus.clearFocus(); model.mode(reverse) }, contentAlignment = Alignment.Center) {
-                    Text(title, color = if (state.reverse == reverse) p.text else p.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
+    val keys = listOf("amount", "rate", "term", "fixed", "commission", "payment", "total", "down", "final", "addition", "paymentType")
+    val requesters = remember(state.formKey) { keys.associateWith { FocusRequester() } }
+    val bringIntoView = remember(state.formKey) { keys.associateWith { BringIntoViewRequester() } }
+    val order = when {
+        loan && state.reverse -> listOf("amount", "term", "payment", "total", "down").filter { it != form.target }
+        loan -> listOf("amount", "rate", "term", "fixed", "commission")
+        else -> listOf("amount") + (if (state.reverse) listOf("final") else emptyList()) + listOf("rate", "term") + (if (form.text("period") != "none") listOf("addition") else emptyList())
+    }
+    val navigation = FormNavigation(order, requesters, bringIntoView, scope, keyboard)
+    val requested = model.inputFocusRequest
+    LaunchedEffect(requested) {
+        if (requested != null && requested.formKey == state.formKey) {
+            navigation.focus(requested.field)
+            model.consumeInputFocus(requested.sequence)
         }
-        Glass(shape = RoundedCornerShape(topStart = if (state.reverse) 16.dp else 0.dp, topEnd = if (state.reverse) 0.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)) {
+    }
+    CompositionLocalProvider(LocalFormNavigation provides navigation) {
+        AttachedPanel(listOf("Прямой", "Обратный"), if (state.reverse) 1 else 0, { index -> focus.clearFocus(); model.mode(index == 1) }) {
             if (state.reverse && state.settings.hints) {
                 Surface(Modifier.fillMaxWidth().clickable { model.settings(state.settings.copy(hints = false)); model.notify("Подсказки можно включить в меню «Инфо»") }, color = p.primary.copy(alpha = .06f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, p.primary.copy(alpha = .2f))) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -325,12 +345,14 @@ private val NumberGrouping = VisualTransformation { input ->
             }
             Numeric(if (loan) "Сумма кредита (₽)" else "Сумма депозита (₽)", "amount", form, model::edit, calculated = !loan && state.reverse && form.target == "amount")
             if (loan && state.reverse) {
+                Column(Modifier.focusRequester(requesters.getValue("paymentType")).bringIntoViewRequester(bringIntoView.getValue("paymentType")).focusable(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Label("Тип ежемесячного платежа")
                 listOf("annuity" to "Аннуитетный — фиксированный", "differentiated" to "Дифференцированный — уменьшаемый").forEach { (key, label) ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).clickable { model.edit("paymentType", key) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(16.dp).border(2.dp, if (form.text("paymentType") == key) p.primary else p.muted.copy(alpha = .4f), CircleShape), contentAlignment = Alignment.Center) { if (form.text("paymentType") == key) Box(Modifier.size(8.dp).background(p.primary, CircleShape)) }
                         Text(label, fontSize = 11.sp, color = p.text)
                     }
+                }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Numeric("Срок (мес.)", "term", form, model::edit, Modifier.weight(1f), "мес.", true, calculated = form.target == "term", lockCalculated = true)
@@ -360,7 +382,7 @@ private val NumberGrouping = VisualTransformation { input ->
             }
             form.autoError?.let { Text(it, color = Color(0xFFF43F5E), fontSize = 12.sp) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Action("Рассчитать", Modifier.weight(1f).testTag("calculate"), R.drawable.lucide_calculator, busy = state.calculating) { focus.clearFocus(); model.calculate() }
+                Action("Рассчитать", Modifier.weight(1f).testTag("calculate"), R.drawable.lucide_calculator, busy = state.calculating) { if (model.calculate()) { focus.clearFocus(); keyboard?.hide() } }
                 SmallButton(R.drawable.lucide_trash_2, "Сбросить параметры") { focus.clearFocus(); model.reset() }
             }
         }
@@ -406,16 +428,7 @@ private val NumberGrouping = VisualTransformation { input ->
             }
         }
         val tabs = c.isLoan && entry.mode != "reverse"
-        Column {
-            if (tabs) Row {
-                listOf("annuity" to "Аннуитетный", "differentiated" to "Дифференцированный").forEach { (type, label) ->
-                    val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                    Box(Modifier.weight(1f).height(42.dp).clip(shape).background(if (paymentType == type) p.glass else Color.Transparent).border(1.dp, if (paymentType == type) p.border else Color.Transparent, shape).selectableCompat(paymentType == type) { onPaymentType(type) }, contentAlignment = Alignment.Center) {
-                        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (paymentType == type) p.text else p.muted)
-                    }
-                }
-            }
-            Glass(shape = RoundedCornerShape(topStart = if (tabs && paymentType == "annuity") 0.dp else 16.dp, topEnd = if (tabs && paymentType == "differentiated") 0.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)) {
+        val resultContent: @Composable ColumnScope.() -> Unit = {
             if (onSave == null) Text(SimpleDateFormat("dd MMM yyyy — HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(entry.timestamp)), color = p.muted, fontSize = 10.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (c.isLoan) "Ежемесячный платеж" else "Итоговая сумма", fontSize = 13.sp, color = p.muted, modifier = Modifier.weight(1f))
@@ -456,7 +469,8 @@ private val NumberGrouping = VisualTransformation { input ->
                 if (onDelete != null) SmallButton(R.drawable.lucide_trash_2, "Удалить расчёт", onDelete)
             }
         }
-    }
+        if (tabs) AttachedPanel(listOf("Аннуитетный", "Дифференцированный"), if (paymentType == "annuity") 0 else 1, { onPaymentType(if (it == 0) "annuity" else "differentiated") }, resultContent)
+        else Glass(content = resultContent)
     }
     rateInfo?.let { type -> RateInfoDialog(type, c) { rateInfo = null } }
 }
