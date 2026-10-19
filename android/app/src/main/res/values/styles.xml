@@ -1,0 +1,14 @@
+<resources>
+    <style name="Theme.DepoCred" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#10B981</item>
+        <item name="android:windowBackground">#F9FAFB</item>
+    </style>
+    <style name="Theme.DepoCred.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#10B981</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_coins</item>
+        <item name="postSplashScreenTheme">@style/Theme.DepoCred</item>
+    </style>
+</resources>

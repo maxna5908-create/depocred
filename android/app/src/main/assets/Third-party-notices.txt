@@ -1,0 +1,17 @@
+DepoCred Android — сторонние компоненты
+
+Kotlin и Kotlin Coroutines — JetBrains, Apache License 2.0.
+https://github.com/JetBrains/kotlin
+https://github.com/Kotlin/kotlinx.coroutines
+
+AndroidX Activity, Core, Lifecycle, Compose и Material 3 — Android Open Source Project, Apache License 2.0.
+https://developer.android.com/jetpack/androidx
+
+Inter — The Inter Project Authors, SIL Open Font License 1.1.
+Полный текст: Inter-OFL.txt.
+
+Lucide — Lucide contributors, ISC License.
+Полный текст: Lucide-LICENSE.txt.
+
+Приложение использует системные средства Android для PDF и передачи файлов.
+Нативная версия не включает веб-зависимости исходной PWA.

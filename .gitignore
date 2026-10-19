@@ -6,3 +6,16 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Android local tools, generated output, and private signing material
+.gradle/
+.kotlin/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.apk
+*.aab
+*.apks
+android/captures/

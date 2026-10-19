@@ -1,0 +1,564 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package ru.depocred.app
+
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+val SKINS = linkedMapOf("emerald" to Color(0xFF10B981), "blue" to Color(0xFF3B82F6), "amber" to Color(0xFFF59E0B), "rose" to Color(0xFFF43F5E), "violet" to Color(0xFF8B5CF6))
+private val Inter = FontFamily(Font(R.font.inter))
+private data class Palette(val dark: Boolean, val primary: Color) {
+    val text get() = if (dark) Color.White else Color(0xFF0F172A)
+    val muted get() = if (dark) Color(0xFFCBD5E1) else Color(0xFF64748B)
+    val glass get() = if (dark) Color.White.copy(alpha = .12f) else Color.White.copy(alpha = .60f)
+    val field get() = if (dark) Color.White.copy(alpha = .08f) else Color.Black.copy(alpha = .05f)
+    val border get() = if (dark) Color.White.copy(alpha = .18f) else Color.Black.copy(alpha = .10f)
+    val solid get() = if (dark) Color(0xFF0F172A) else Color(0xFFF9FAFB)
+    val background get() = Brush.radialGradient(listOf(if (dark) Color(0xFF374151) else Color(0xFFF9FAFB), if (dark) Color(0xFF111827) else Color(0xFFE5E7EB)), radius = 1700f)
+}
+private val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF10B981)) }
+
+@Composable fun DepoCredApp(model: AppViewModel, onExport: (SavedCalculation, Boolean) -> Unit, onLink: (String) -> Unit, onShareApp: () -> Unit) {
+    val state = model.state
+    val dark = state.settings.theme == "dark" || state.settings.theme == "system" && isSystemInDarkTheme()
+    val palette = Palette(dark, SKINS[state.settings.skin] ?: SKINS.getValue("emerald"))
+    val scheme = if (dark) darkColorScheme(primary = palette.primary, background = palette.solid, surface = palette.solid, onSurface = palette.text)
+        else lightColorScheme(primary = palette.primary, background = palette.solid, surface = palette.solid, onSurface = palette.text)
+    CompositionLocalProvider(LocalPalette provides palette) {
+        MaterialTheme(colorScheme = scheme, typography = appTypography()) {
+            val activity = LocalActivity.current
+            val view = LocalView.current
+            SideEffect { activity?.let { WindowCompat.getInsetsController(it.window, view).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark } } }
+            var splash by rememberSaveable { mutableStateOf(true) }
+            var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+            val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
+            val scope = rememberCoroutineScope()
+            val scroll = key(state.tab) { rememberScrollState() }
+            val focus = LocalFocusManager.current
+            var resultY by remember { mutableIntStateOf(0) }
+            val density = LocalDensity.current
+            val keyboard = WindowInsets.ime.getBottom(density) > 0
+            LaunchedEffect(Unit) { delay(1800); splash = false }
+            LaunchedEffect(state.resultRevision) {
+                if (state.current != null) { delay(150); scroll.animateScrollTo(resultY) }
+            }
+            LaunchedEffect(model.notice) { if (model.notice != null) { delay(3500); model.clearNotice() } }
+            BackHandler(enabled = !splash && state.tab != "loan" && selected == null) { model.tab("loan") }
+            Box(Modifier.fillMaxSize().background(palette.background)) {
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
+                    Column(Modifier.widthIn(max = 800.dp).fillMaxSize()) {
+                        AppHeader(state.tab)
+                        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (keyboard) 28.dp else 146.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                            when (state.tab) {
+                                "loan", "deposit" -> {
+                                    CalculatorForm(state, model)
+                                    if (state.current != null) {
+                                        // Position relative to scroll content, independent of keyboard/screen size.
+                                        Box(Modifier.onGloballyPositionedCompat { y -> resultY = y }) {
+                                            CalculationResult(state.current, state.form.text("paymentType"), model::paymentType,
+                                                onSave = model::saveCurrent, onSchedule = { selectedId = state.current.id }, onExport = onExport)
+                                        }
+                                        Column(Modifier.fillMaxWidth().clickable { scope.launch { scroll.animateScrollTo(0) } }.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Glyph(R.drawable.lucide_arrow_up, null, palette.muted, 32)
+                                            Text("К ПАРАМЕТРАМ ${if (state.tab == "loan") "КРЕДИТА" else "ДЕПОЗИТА"}", fontSize = 10.sp, color = palette.muted, modifier = Modifier.padding(top = 8.dp))
+                                        }
+                                    }
+                                }
+                                "history" -> HistoryScreen(state.history, model::delete, { selectedId = it.id }, onExport)
+                                "info" -> InfoScreen(state.settings, model::settings, onLink, onShareApp)
+                            }
+                        }
+                    }
+                    if (!keyboard) BottomMenu(state.tab, { focus.clearFocus(); model.tab(it) }, Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp).widthIn(max = 752.dp))
+                    model.notice?.let { message ->
+                        Surface(Modifier.align(Alignment.TopCenter).padding(16.dp).widthIn(max = 520.dp).clickable { model.clearNotice() }, shape = RoundedCornerShape(16.dp), color = palette.solid, border = BorderStroke(1.dp, palette.primary), shadowElevation = 8.dp) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Glyph(R.drawable.lucide_info, null, palette.primary)
+                                Text(message, fontSize = 13.sp, color = palette.text, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                AnimatedVisibility(splash, enter = fadeIn(), exit = fadeOut(tween(300))) { Splash(palette.primary) }
+            }
+            selected?.let { ScheduleScreen(it, { selectedId = null }, onExport) }
+        }
+    }
+}
+
+// Kept separate so positions are measured in the scroll viewport.
+private fun Modifier.onGloballyPositionedCompat(block: (Int) -> Unit): Modifier = this.then(Modifier.onGloballyPositioned { block(it.positionInParent().y.toInt()) })
+
+private fun appTypography(): Typography {
+    val t = Typography()
+    return Typography(displayLarge = t.displayLarge.copy(fontFamily = Inter), displayMedium = t.displayMedium.copy(fontFamily = Inter), displaySmall = t.displaySmall.copy(fontFamily = Inter),
+        headlineLarge = t.headlineLarge.copy(fontFamily = Inter), headlineMedium = t.headlineMedium.copy(fontFamily = Inter), headlineSmall = t.headlineSmall.copy(fontFamily = Inter),
+        titleLarge = t.titleLarge.copy(fontFamily = Inter), titleMedium = t.titleMedium.copy(fontFamily = Inter), titleSmall = t.titleSmall.copy(fontFamily = Inter),
+        bodyLarge = t.bodyLarge.copy(fontFamily = Inter), bodyMedium = t.bodyMedium.copy(fontFamily = Inter), bodySmall = t.bodySmall.copy(fontFamily = Inter),
+        labelLarge = t.labelLarge.copy(fontFamily = Inter), labelMedium = t.labelMedium.copy(fontFamily = Inter), labelSmall = t.labelSmall.copy(fontFamily = Inter))
+}
+
+@Composable private fun Splash(color: Color) {
+    var entered by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (entered) 1f else .6f, tween(450), label = "splash")
+    LaunchedEffect(Unit) { entered = true }
+    Box(Modifier.fillMaxSize().background(color)) {
+        Column(Modifier.align(Alignment.Center).scale(scale), horizontalAlignment = Alignment.CenterHorizontally) {
+            Glyph(R.drawable.lucide_coins, null, Color.White, 96)
+            Text("DepoCred", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White, modifier = Modifier.padding(top = 28.dp))
+            Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 11.sp, color = Color.White.copy(alpha = .8f), letterSpacing = 1.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+        LinearProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 50.dp).width(48.dp).height(3.dp), color = Color.White, trackColor = Color.White.copy(alpha = .3f))
+    }
+}
+@Composable private fun AppHeader(tab: String) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Column(Modifier.width(IntrinsicSize.Max)) {
+                Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 10.sp, color = p.muted, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
+                Box(Modifier.fillMaxWidth().padding(top = 3.dp).height(1.5.dp).background(p.primary, CircleShape))
+            }
+            Text(when (tab) { "loan" -> "Кредитный калькулятор"; "deposit" -> "Депозитный калькулятор"; "history" -> "Сохраненные расчеты"; else -> "О приложении" }, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.primary, modifier = Modifier.padding(top = 6.dp))
+        }
+        Glyph(R.drawable.lucide_coins, null, p.primary, 32)
+    }
+}
+@Composable private fun BottomMenu(tab: String, onTab: (String) -> Unit, modifier: Modifier) {
+    val p = LocalPalette.current
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = if (p.dark) Color(0xFF636B78).copy(alpha = .95f) else Color(0xFFE9EBEE).copy(alpha = .97f), border = BorderStroke(1.dp, p.border), shadowElevation = 8.dp) {
+        Row(Modifier.heightIn(min = 80.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf(Triple("loan", "КРЕДИТ", R.drawable.lucide_credit_card), Triple("deposit", "ДЕПОЗИТ", R.drawable.lucide_piggy_bank), Triple("history", "ИСТОРИЯ", R.drawable.lucide_bookmark), Triple("info", "ИНФО", R.drawable.lucide_info)).forEach { (id, label, icon) ->
+                val active = tab == id
+                val tint = if (active) p.primary else p.text.copy(alpha = .45f)
+                Column(Modifier.weight(1f).selectableCompat(active) { onTab(id) }.testTag("tab_$id").padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Box(Modifier.size(36.dp).background(if (active) p.primary.copy(alpha = .1f) else Color.Transparent, RoundedCornerShape(9.dp)).border(1.dp, if (active) p.primary.copy(alpha = .3f) else Color.Transparent, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) { Glyph(icon, null, tint, 20) }
+                    Text(label, fontSize = 9.sp, letterSpacing = .7.sp, fontWeight = FontWeight.Bold, color = tint)
+                }
+            }
+        }
+    }
+}
+private fun Modifier.selectableCompat(selected: Boolean, onClick: () -> Unit) = this.semantics { this.selected = selected; role = Role.Tab }.clickable(onClick = onClick)
+
+@Composable private fun Glass(modifier: Modifier = Modifier, shape: RoundedCornerShape = RoundedCornerShape(16.dp), content: @Composable ColumnScope.() -> Unit) {
+    val p = LocalPalette.current
+    Surface(modifier.fillMaxWidth(), shape = shape, color = p.glass, border = BorderStroke(1.dp, p.border), shadowElevation = 2.dp) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+    }
+}
+@Composable private fun Glyph(resource: Int, description: String?, tint: Color = LocalPalette.current.text, size: Int = 22) {
+    Icon(painterResource(resource), contentDescription = description, tint = tint, modifier = Modifier.size(size.dp))
+}
+@Composable private fun SmallButton(icon: Int, description: String, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Surface(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).semantics { contentDescription = description; role = Role.Button }, shape = RoundedCornerShape(16.dp), color = p.field, border = BorderStroke(1.dp, p.border)) {
+        Box(contentAlignment = Alignment.Center) { Glyph(icon, null) }
+    }
+}
+@Composable private fun Action(text: String, modifier: Modifier = Modifier, icon: Int? = null, primary: Boolean = true, busy: Boolean = false, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Surface(modifier.heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp)).clickable(enabled = !busy, onClick = onClick).semantics { role = Role.Button }, shape = RoundedCornerShape(16.dp), color = if (primary) p.primary else p.field, border = if (primary) null else BorderStroke(1.dp, p.border)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+            val color = if (primary) Color.White else p.text
+            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = color, strokeWidth = 2.dp) else icon?.let { Glyph(it, null, color, 18) }
+            Text(text, color = color, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+        }
+    }
+}
+@Composable private fun Label(text: String) { Text(text.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .7.sp, color = LocalPalette.current.muted) }
+@Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, placeholder: String = "0", lockCalculated: Boolean = false) {
+    val p = LocalPalette.current
+    val focus = LocalFocusManager.current
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label(label)
+        BasicTextField(value = form.text(key), onValueChange = { raw ->
+            val value = raw.replace(',', '.').replace(" ", "").replace("\u00a0", "")
+            val pattern = if (integer) Regex("[0-9]{0,3}") else Regex("[0-9]{0,12}(\\.[0-9]{0,2})?")
+            if (pattern.matches(value)) onEdit(key, value)
+        }, enabled = enabled && !(calculated && lockCalculated), singleLine = true, visualTransformation = NumberGrouping,
+            textStyle = TextStyle(fontFamily = Inter, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (calculated) p.primary else p.text),
+            keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }), cursorBrush = SolidColor(p.primary),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
+                .clip(RoundedCornerShape(12.dp)).background(if (calculated) p.primary.copy(alpha = .08f) else p.field).border(1.dp, if (calculated) p.primary.copy(alpha = .3f) else p.border, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 12.dp),
+            decorationBox = { inner ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { if (form.text(key).isEmpty()) Text(placeholder, color = p.muted.copy(alpha = if (enabled) .55f else .3f), fontSize = 16.sp); inner() }
+                    if (form.text(key).isNotEmpty() && enabled && !calculated) Box(Modifier.size(24.dp).clickable { onEdit(key, "") }.semantics { contentDescription = "Очистить $label" }, contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_x, null, p.muted, 13) }
+                    Text(suffix, color = p.muted, fontSize = 12.sp)
+                }
+            })
+    }
+}
+
+private val NumberGrouping = VisualTransformation { input ->
+    val integerLength = input.text.indexOf('.').let { if (it < 0) input.length else it }
+    val insertions = (1 until integerLength).filter { (integerLength - it) % 3 == 0 }
+    val text = buildString { input.text.forEachIndexed { index, c -> if (index in insertions) append(' '); append(c) } }
+    val mapping = object : OffsetMapping {
+        override fun originalToTransformed(offset: Int) = offset + insertions.count { it <= offset }
+        override fun transformedToOriginal(offset: Int): Int {
+            var result = offset
+            insertions.forEachIndexed { index, original -> if (offset > original + index) result-- }
+            return result.coerceIn(0, input.length)
+        }
+    }
+    TransformedText(AnnotatedString(text), mapping)
+}
+
+@Composable private fun CalculatorForm(state: UiState, model: AppViewModel) {
+    val p = LocalPalette.current
+    val loan = state.tab == "loan"
+    val form = state.form
+    val focus = LocalFocusManager.current
+    Column {
+        Row {
+            listOf(false to "Прямой", true to "Обратный").forEach { (reverse, title) ->
+                Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(if (state.reverse == reverse) p.glass else Color.Transparent).selectableCompat(state.reverse == reverse) { focus.clearFocus(); model.mode(reverse) }, contentAlignment = Alignment.Center) {
+                    Text(title, color = if (state.reverse == reverse) p.text else p.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Glass(shape = RoundedCornerShape(topStart = if (state.reverse) 16.dp else 0.dp, topEnd = if (state.reverse) 0.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)) {
+            if (state.reverse && state.settings.hints) {
+                Surface(Modifier.fillMaxWidth().clickable { model.settings(state.settings.copy(hints = false)); model.notify("Подсказки можно включить в меню «Инфо»") }, color = p.primary.copy(alpha = .06f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, p.primary.copy(alpha = .2f))) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (loan) "Обратный расчет позволяет вычислить номинальную и эффективную ставку кредита. Укажите сумму и тип платежа, затем любые два из трёх параметров: срок, платёж, сумма возврата." else "Обратный расчет позволяет вычислить параметры депозита. Заполните любые три поля: сумма, итоговая сумма, ставка, срок. Четвёртое рассчитается автоматически.", fontSize = 12.sp, fontStyle = FontStyle.Italic, color = p.primary)
+                        Text("НАЖМИТЕ, ЧТОБЫ СКРЫТЬ ПОДСКАЗКУ", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = p.primary)
+                    }
+                }
+            }
+            Numeric(if (loan) "Сумма кредита (₽)" else "Сумма депозита (₽)", "amount", form, model::edit, calculated = !loan && state.reverse && form.target == "amount")
+            if (loan && state.reverse) {
+                Label("Тип ежемесячного платежа")
+                listOf("annuity" to "Аннуитетный — фиксированный", "differentiated" to "Дифференцированный — уменьшаемый").forEach { (key, label) ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).clickable { model.edit("paymentType", key) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.size(16.dp).border(2.dp, if (form.text("paymentType") == key) p.primary else p.muted.copy(alpha = .4f), CircleShape), contentAlignment = Alignment.Center) { if (form.text("paymentType") == key) Box(Modifier.size(8.dp).background(p.primary, CircleShape)) }
+                        Text(label, fontSize = 11.sp, color = p.text)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Numeric("Срок (мес.)", "term", form, model::edit, Modifier.weight(1f), "мес.", true, calculated = form.target == "term", lockCalculated = true)
+                    Numeric(if (form.text("paymentType") == "differentiated") "Первый платёж (₽)" else "Платёж (₽)", "payment", form, model::edit, Modifier.weight(1f), calculated = form.target == "payment", lockCalculated = true)
+                }
+                Numeric("Сумма возврата (₽)", "total", form, model::edit, calculated = form.target == "total", lockCalculated = true)
+                Numeric("Первоначальный взнос (₽)", "down", form, model::edit)
+            } else {
+                if (!loan && state.reverse) Numeric("Итоговая сумма (₽)", "final", form, model::edit, calculated = form.target == "final")
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Numeric("Ставка (%)", "rate", form, model::edit, Modifier.weight(1f), "%", calculated = !loan && state.reverse && form.target == "rate")
+                    Numeric("Срок (мес.)", "term", form, model::edit, Modifier.weight(1f), "мес.", true, calculated = !loan && state.reverse && form.target == "term")
+                }
+                if (loan) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Numeric("Комиссия (₽)", "fixed", form, model::edit, Modifier.weight(1f))
+                        Numeric("Комиссия (%)", "commission", form, model::edit, Modifier.weight(1f), "%")
+                    }
+                    Text("*Расчет производится для обоих типов платежей.", fontSize = 12.sp, fontStyle = FontStyle.Italic, color = p.primary)
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        OptionField("Пополнение", form.text("period"), ADD_OPTIONS, Modifier.weight(1f)) { model.edit("period", it) }
+                        Numeric("Сумма взноса (₽)", "addition", form, model::edit, Modifier.weight(1f), enabled = form.text("period") != "none")
+                    }
+                    OptionField("Капитализация процентов", form.text("cap"), CAP_OPTIONS) { model.edit("cap", it) }
+                }
+            }
+            form.autoError?.let { Text(it, color = Color(0xFFF43F5E), fontSize = 12.sp) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Action("Рассчитать", Modifier.weight(1f).testTag("calculate"), R.drawable.lucide_calculator, busy = state.calculating) { focus.clearFocus(); model.calculate() }
+                SmallButton(R.drawable.lucide_trash_2, "Сбросить параметры") { focus.clearFocus(); model.reset() }
+            }
+        }
+    }
+}
+
+@Composable private fun OptionField(label: String, value: String, options: List<Pair<String, String>>, modifier: Modifier = Modifier, onSelect: (String) -> Unit) {
+    val p = LocalPalette.current
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label(label)
+        Surface(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable { open = true }.semantics { contentDescription = label; role = Role.DropdownList }, shape = RoundedCornerShape(12.dp), color = p.field, border = BorderStroke(1.dp, p.border)) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(options.firstOrNull { it.first == value }?.second ?: "Выбрать", fontSize = 12.sp, color = p.text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Box(Modifier.size(6.dp).background(p.primary, CircleShape))
+            }
+        }
+    }
+    if (open) Dialog(onDismissRequest = { open = false }) {
+        Surface(shape = RoundedCornerShape(24.dp), color = p.solid, border = BorderStroke(1.dp, p.border)) {
+            Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = p.text, modifier = Modifier.weight(1f)); IconButton(onClick = { open = false }) { Glyph(R.drawable.lucide_x, "Закрыть") } }
+                options.forEach { (key, title) ->
+                    Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(key); open = false }, color = if (key == value) p.primary else p.field, shape = RoundedCornerShape(12.dp)) {
+                        Text(title, fontSize = 14.sp, color = if (key == value) Color.White else p.text, modifier = Modifier.padding(16.dp), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun Metric(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: (() -> Unit)? = null) {
+    val p = LocalPalette.current
+    Column(modifier.then(if (onClick != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 4.dp) else Modifier), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) { Text(label.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = p.muted, letterSpacing = .5.sp); if (onClick != null) { Spacer(Modifier.width(4.dp)); Glyph(R.drawable.lucide_info, null, p.primary, 12) } }
+        Text(value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (accent) p.primary else p.text)
+    }
+}
+@Composable private fun MetricPair(left: Pair<String, String>, right: Pair<String, String>, accent: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) { Metric(left.first, left.second, Modifier.weight(1f), accent); Metric(right.first, right.second, Modifier.weight(1f), accent) }
+}
+@Composable private fun Line() { HorizontalDivider(color = LocalPalette.current.border.copy(alpha = .5f)) }
+
+@Composable private fun CalculationResult(entry: SavedCalculation, paymentType: String, onPaymentType: (String) -> Unit, onSave: (() -> Unit)? = null, onSchedule: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit, onDelete: (() -> Unit)? = null) {
+    val p = LocalPalette.current
+    val c = entry.result
+    var rateInfo by rememberSaveable { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (onSave != null) {
+            Text("${if (entry.mode == "reverse") "Обратный" else "Прямой"} расчет по ${if (c.isLoan) "кредиту" else "депозиту"}", fontSize = 13.sp, color = p.primary, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp))
+            if (c.isLoan && entry.mode != "reverse") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("annuity" to "Аннуитетный", "differentiated" to "Дифференцированный").forEach { (type, label) ->
+                    Surface(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).selectableCompat(paymentType == type) { onPaymentType(type) }, shape = RoundedCornerShape(12.dp), color = if (paymentType == type) p.glass else Color.Transparent, border = BorderStroke(1.dp, if (paymentType == type) p.border else Color.Transparent)) {
+                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (paymentType == type) p.text else p.muted, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 14.dp, horizontal = 6.dp))
+                    }
+                }
+            }
+        }
+        Glass {
+            if (onSave == null) Text(SimpleDateFormat("dd MMM yyyy — HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(entry.timestamp)), color = p.muted, fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (c.isLoan) "Ежемесячный платеж" else "Итоговая сумма", fontSize = 13.sp, color = p.muted, modifier = Modifier.weight(1f))
+                Surface(shape = RoundedCornerShape(8.dp), color = p.primary.copy(alpha = .12f), border = BorderStroke(1.dp, p.primary.copy(alpha = .3f))) {
+                    Text(if (!c.isLoan) "Депозит" else if (c.loan!!.paymentType == "annuity") "Фиксированный" else "Уменьшаемый", color = p.primary, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+            }
+            Text(money(if (c.isLoan) c.firstPayment else c.finalAmount), fontSize = 34.sp, fontWeight = FontWeight.Bold, color = p.text)
+            if (c.loan?.paymentType == "differentiated") Text("до ${money(c.rows.last().payment)}", color = p.muted, fontSize = 11.sp)
+            Line()
+            if (c.isLoan) {
+                val l = c.loan!!
+                MetricPair("Переплата" to money(c.totalInterest), "Сумма возврата" to money(c.totalRepayment), true)
+                MetricPair("Комиссия" to money(c.totalCommission), "Срок кредита" to "${l.term} мес.")
+                MetricPair("Сумма кредита" to money(l.amount), "Получено на руки" to money(c.amountReceived))
+                if (l.downPayment > 0) Metric("Первоначальный взнос", money(l.downPayment))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Metric("Номинальная ставка", percent(l.rate), Modifier.weight(1f), true) { rateInfo = "nominal" }
+                    Metric("Эффективная ставка", percent(c.effectiveRate), Modifier.weight(1f), true) { rateInfo = "effective" }
+                }
+                Line()
+                Text("Переплата по кредиту составит ${percent(c.totalInterest / (l.amount - l.downPayment) * 100)} от суммы кредита.", color = p.primary, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+            } else {
+                val d = c.deposit!!
+                MetricPair("Депозит" to money(d.initialAmount), "Ставка / Срок" to "${percent(d.rate)} | ${d.term} мес.")
+                MetricPair("Пополнения" to money(c.totalAdditions), "Доход" to money(c.totalInterest), true)
+                Metric("Эффективная годовая ставка", percent(c.effectiveRate), accent = true) { rateInfo = "deposit" }
+                Line()
+                Text("Доходность с учетом сложного процента составит ${percent(if (d.initialAmount + c.totalAdditions > 0) c.totalInterest / (d.initialAmount + c.totalAdditions) * 100 else 0.0)} за весь период.", color = p.primary, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Action(if (c.isLoan) "График платежей" else "График начислений", Modifier.weight(1f), onClick = onSchedule)
+                if (onSave != null) SmallButton(R.drawable.lucide_save, "Сохранить расчёт", onSave)
+                SmallButton(R.drawable.lucide_share_2, "Отправить PDF") { onExport(entry, false) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Action("Сохранить PDF", Modifier.weight(1f), R.drawable.lucide_download, primary = false) { onExport(entry, true) }
+                if (onDelete != null) SmallButton(R.drawable.lucide_trash_2, "Удалить расчёт", onDelete)
+            }
+        }
+    }
+    if (rateInfo != null) AlertDialog(onDismissRequest = { rateInfo = null }, title = { Text(if (rateInfo == "nominal") "Номинальная ставка" else "Эффективная ставка") }, text = { Text(when (rateInfo) {
+        "nominal" -> "Годовая процентная ставка, на основании которой рассчитываются проценты по кредиту. Не включает комиссии и влияние периодичности платежей."
+        "deposit" -> "Годовая доходность с учётом частоты капитализации процентов. Фактический результат также зависит от срока и пополнений."
+        else -> "Годовая ставка с учётом комиссий, фактически полученной суммы и графика платежей. Это расчётная оценка, которая может отличаться от полной стоимости кредита в договоре банка."
+    }) }, confirmButton = { TextButton(onClick = { rateInfo = null }) { Text("Понятно") } })
+}
+
+@Composable private fun HistoryScreen(history: List<SavedCalculation>, onDelete: (String) -> Unit, onSchedule: (SavedCalculation) -> Unit, onExport: (SavedCalculation, Boolean) -> Unit) {
+    val p = LocalPalette.current
+    var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("loan" to "Кредиты", "deposit" to "Депозиты").forEach { (key, label) ->
+            val count = history.count { it.result.isLoan == (key == "loan") }
+            Action("$label  $count", Modifier.weight(1f), primary = filter == key) { filter = if (filter == key) null else key }
+        }
+    }
+    val entries = history.filter { filter == null || it.result.isLoan == (filter == "loan") }
+    if (entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Glyph(R.drawable.lucide_bookmark, null, p.primary, 60)
+        Text("Нет сохраненных расчетов", color = p.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Сохраните расчет, чтобы вернуться к нему позже", color = p.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+    }
+    entries.forEach { entry -> key(entry.id) { CalculationResult(entry, "", {}, onSchedule = { onSchedule(entry) }, onExport = onExport, onDelete = { onDelete(entry.id) }) } }
+}
+
+@Composable private fun ScheduleScreen(entry: SavedCalculation, onClose: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit) {
+    val p = LocalPalette.current
+    val c = entry.result
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val view = LocalView.current
+        SideEffect { (view.parent as? DialogWindowProvider)?.window?.let { WindowCompat.getInsetsController(it, view).apply { isAppearanceLightStatusBars = !p.dark; isAppearanceLightNavigationBars = !p.dark } } }
+        Box(Modifier.fillMaxSize().background(p.solid).windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 800.dp).fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Glyph(R.drawable.lucide_arrow_left, "Назад", p.primary) }
+                    Text(if (c.isLoan) "График платежей" else "График начислений", Modifier.weight(1f), color = p.text, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    IconButton(onClick = { onExport(entry, false) }) { Glyph(R.drawable.lucide_share_2, "Отправить PDF", p.primary) }
+                    IconButton(onClick = { onExport(entry, true) }) { Glyph(R.drawable.lucide_download, "Сохранить PDF", p.primary) }
+                }
+                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("schedule"), contentPadding = PaddingValues(bottom = 24.dp)) {
+                    item {
+                        Glass {
+                            if (c.isLoan) {
+                                val l = c.loan!!
+                                MetricPair("Сумма кредита" to money(l.amount), "Ставка / срок" to "${percent(l.rate)} | ${l.term} мес.")
+                                MetricPair("Переплата" to money(c.totalInterest), "Сумма возврата" to money(c.totalRepayment), true)
+                            } else {
+                                val d = c.deposit!!
+                                MetricPair("Сумма вклада" to money(d.initialAmount), "Ставка / срок" to "${percent(d.rate)} | ${d.term} мес.")
+                                MetricPair("Итоговая сумма" to money(c.finalAmount), "Доход" to money(c.totalInterest), true)
+                            }
+                        }
+                        Spacer(Modifier.height(20.dp))
+                    }
+                    stickyHeader {
+                        Row(Modifier.fillMaxWidth().background(p.solid).padding(vertical = 16.dp, horizontal = 12.dp)) {
+                            Text("№", color = p.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(32.dp))
+                            Text(if (c.isLoan) "ПЛАТЕЖ / ОСТАТОК" else "ПРОЦЕНТ / ВЗНОС", color = p.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(if (c.isLoan) "ПРОЦ. / ОСН." else "БАЛАНС", color = p.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    items(c.rows, key = { it.month }) { row ->
+                        Row(Modifier.fillMaxWidth().background(if (row.month % 2 == 0) p.field else Color.Transparent).padding(vertical = 15.dp, horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.month.toString(), color = p.muted, fontSize = 12.sp, modifier = Modifier.width(32.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(money(if (c.isLoan) row.payment else row.interest), fontSize = 12.sp, color = if (c.isLoan) p.text else p.primary)
+                                Text(if (c.isLoan) "ост. ${money(row.balance)}" else "+${money(row.addition)}", fontSize = 10.sp, color = p.muted)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(money(if (c.isLoan) row.interest else row.balance), fontSize = 12.sp, color = if (c.isLoan) p.primary else p.text)
+                                if (c.isLoan) Text(money(row.principal), fontSize = 11.sp, color = p.muted)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun InfoScreen(settings: Settings, onSettings: (Settings) -> Unit, onLink: (String) -> Unit, onShareApp: () -> Unit) {
+    val p = LocalPalette.current
+    var privacy by rememberSaveable { mutableStateOf(false) }
+    var licenses by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    Text("Настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.text)
+    Glass {
+        Label("Тема оформления")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("light" to "Светлая", "dark" to "Темная").forEach { (key, label) -> Action(label, Modifier.weight(1f), if (key == "light") R.drawable.lucide_sun else R.drawable.lucide_moon, settings.theme == key) { onSettings(settings.copy(theme = key)) } }
+        }
+        Action("Как в системе", Modifier.fillMaxWidth(), R.drawable.lucide_smartphone, settings.theme == "system") { onSettings(settings.copy(theme = "system")) }
+        Label("Цветовая схема")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            SKINS.forEach { (key, color) ->
+                Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = if (settings.skin == key) 1f else .4f)).clickable { onSettings(settings.copy(skin = key)) }.semantics { contentDescription = when (key) { "emerald" -> "Изумрудная"; "blue" -> "Синяя"; "amber" -> "Янтарная"; "rose" -> "Розовая"; else -> "Фиолетовая" }; selected = settings.skin == key }, contentAlignment = Alignment.Center) { if (settings.skin == key) Glyph(R.drawable.lucide_check, null, Color.White, 22) }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Switch(settings.hints, { onSettings(settings.copy(hints = it)) }, colors = SwitchDefaults.colors(checkedTrackColor = p.primary))
+            Text("ПОДСКАЗКИ В ПРИЛОЖЕНИИ", fontSize = 10.sp, color = p.muted, fontWeight = FontWeight.Bold)
+        }
+    }
+    Text("О приложении", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.text)
+    Glass {
+        Text("DepoCred — финансовый инструмент для быстрого расчета кредитных и депозитных условий.", fontSize = 13.sp, color = p.muted)
+        InfoBlock(R.drawable.lucide_shield, "Конфиденциальность", "Все расчеты хранятся локально на вашем устройстве. Мы не собираем финансовые данные.")
+        InfoBlock(R.drawable.lucide_sparkles, "Умные алгоритмы", "Аннуитетные и дифференцированные платежи, комиссии, обратные расчёты и сложный банковский процент.")
+        InfoBlock(R.drawable.lucide_smartphone, "Платформа", "Нативное Android-приложение. Расчёты, история и PDF работают без интернета.")
+        Text("Расчёты носят информационный характер. Условия, календарь и правила округления вашего банка могут отличаться.", fontSize = 11.sp, color = p.muted)
+    }
+    Column {
+        LinkRow(R.drawable.lucide_globe, "depocred.ru") { onLink("https://depocred.ru") }
+        LinkRow(R.drawable.lucide_mail, "support@depocred.ru") { onLink("mailto:support@depocred.ru") }
+        LinkRow(R.drawable.lucide_share_2, "Поделиться приложением", onShareApp)
+        LinkRow(R.drawable.lucide_star, "Поставить оценку") { onLink("https://play.google.com/store/apps/details?id=ru.depocred.app") }
+        LinkRow(R.drawable.lucide_shield, "Политика конфиденциальности") { privacy = true }
+        LinkRow(R.drawable.lucide_info, "Открытые лицензии") { licenses = true }
+    }
+    Line()
+    Text("ВЕРСИЯ ${BuildConfig.VERSION_NAME}\n\nСделано с ❤️ для вашей финансовой свободы", color = p.muted, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+    if (privacy) AlertDialog(onDismissRequest = { privacy = false }, title = { Text("Конфиденциальность") }, text = { Text("DepoCred работает без подключения к интернету, не содержит рекламы, аналитики и регистрации. Параметры, настройки и последние 10 сохранённых расчётов находятся только в памяти приложения на устройстве.\n\nPDF передаётся другому приложению только после вашего действия. Получатель получает временный доступ к выбранному файлу.\n\nОбновление с той же подписью сохраняет данные. Удаление приложения или очистка его данных удаляет локальную историю. Сохранённые вами во внешнюю папку PDF остаются в этой папке.\n\nКонтакт: support@depocred.ru") }, confirmButton = { TextButton(onClick = { privacy = false }) { Text("Закрыть") } })
+    if (licenses) {
+        val text = remember { listOf("Third-party-notices.txt", "Inter-OFL.txt", "Lucide-LICENSE.txt", "Apache-2.0.txt").joinToString("\n\n") { file -> context.assets.open(file).bufferedReader().use { it.readText() } } }
+        AlertDialog(onDismissRequest = { licenses = false }, title = { Text("Открытые лицензии") }, text = { Text(text, fontSize = 12.sp, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) }, confirmButton = { TextButton(onClick = { licenses = false }) { Text("Закрыть") } })
+    }
+}
+@Composable private fun InfoBlock(icon: Int, title: String, text: String) {
+    val p = LocalPalette.current
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(48.dp).background(p.primary.copy(alpha = .1f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Glyph(icon, null, p.primary) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(title.uppercase(), color = p.text, fontSize = 11.sp, fontWeight = FontWeight.Bold); Text(text, color = p.muted, fontSize = 12.sp) }
+    }
+}
+@Composable private fun LinkRow(icon: Int, text: String, action: () -> Unit) {
+    val p = LocalPalette.current
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = action).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Glyph(icon, null, p.muted, 20); Text(text, color = p.muted, fontSize = 14.sp) }
+}
