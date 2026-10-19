@@ -48,13 +48,21 @@ class NativeAppTest {
     }
     private fun nativeKeyboardAction(action: Int) {
         // Check the EditorInfo served to the real API-35 keyboard, in addition to Compose semantics.
-        rule.waitUntil(10000) {
-            val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys input_method")
-            val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
-            val flags = Regex("mCurEditorInfo:[\\s\\S]*?imeOptions=0x([0-9a-fA-F]+)").find(dump)?.groupValues?.get(1)?.toLongOrNull(16)
-            flags != null && flags.toInt() and android.view.inputmethod.EditorInfo.IME_MASK_ACTION == action
+        var lastDump = ""
+        try {
+            rule.waitUntil(10000) {
+                val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys input_method")
+                lastDump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+                // Android 15 exposes the editor currently received by the IME here.
+                val flags = Regex("mInputEditorInfo:[\\s\\S]*?imeOptions=0x([0-9a-fA-F]+)").find(lastDump)?.groupValues?.get(1)?.toLongOrNull(16)
+                flags != null && (flags.toInt() and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) == action
+            }
+        } finally {
+            val directory = File(rule.activity.filesDir, "qa").apply { mkdirs() }
+            File(directory, "ime-${System.nanoTime()}.txt").writeText(lastDump)
         }
     }
+
     private fun next(from: String, to: String) {
         rule.onNodeWithTag("field_$from").assert(hasImeAction(ImeAction.Next)).performImeAction()
         rule.onNodeWithTag("field_$to").assertIsFocused().assertIsDisplayed()
