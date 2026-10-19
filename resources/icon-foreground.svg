@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <!-- Background is handled separately, but we can add it here for preview -->
+  <!-- Top Left Coin -->
+  <circle cx="380" cy="380" r="210" stroke="white" stroke-width="60" fill="none"/>
+  <rect x="345" y="270" width="70" height="220" rx="35" fill="white" />
+  
+  <!-- Bottom Right Coin (overlapping) -->
+  <path d="M580 480 A 210 210 0 1 1 840 780" stroke="white" stroke-width="60" fill="none" stroke-linecap="round"/>
+  <g transform="translate(710, 630) rotate(30)">
+    <rect x="-35" y="-110" width="70" height="220" rx="35" fill="white" />
+  </g>
+</svg>

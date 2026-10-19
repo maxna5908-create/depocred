@@ -1,0 +1,15 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { ThemeProvider } from './components/ThemeContext';
+import { Layout } from './components/Layout';
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <Layout />
+    </ThemeProvider>
+  );
+}
