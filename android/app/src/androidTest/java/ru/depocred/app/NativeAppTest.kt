@@ -26,7 +26,13 @@ class NativeAppTest {
     @Before fun setup() {
         rule.waitUntil(120000) { rule.onAllNodesWithText("DepoCred", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
         rule.runOnIdle {
-            model.tab("loan"); model.mode(false); model.reset(); model.settings(Settings())
+            // Each scenario starts with all four forms empty, including period selectors.
+            for (tab in listOf("loan", "deposit")) {
+                model.tab(tab)
+                for (reverse in listOf(false, true)) { model.mode(reverse); model.reset() }
+                model.mode(false)
+            }
+            model.tab("loan"); model.settings(Settings())
             model.state.history.forEach { model.delete(it.id) }; model.clearNotice()
         }
     }
@@ -44,6 +50,10 @@ class NativeAppTest {
         rule.onNodeWithTag("field_$from").assert(hasImeAction(ImeAction.Next)).performImeAction()
         rule.onNodeWithTag("field_$to").assertIsFocused().assertIsDisplayed()
         keyboard(true)
+        rule.waitUntil(5000) {
+            val node = rule.onNodeWithTag("field_$to").fetchSemanticsNode()
+            node.boundsInRoot.height >= node.size.height - 1
+        }
     }
     @Test fun keyboardFollowsEditableFieldsAndKeepsLastFieldVisible() {
         rule.onNodeWithText("Прямой").performTouchInput { down(center) }
@@ -105,6 +115,9 @@ class NativeAppTest {
     private fun screenshot(name: String) {
         rule.runOnIdle { model.clearNotice() }
         rule.waitForIdle()
+        // InputConnection/IME and Surface transactions finish outside Compose's test clock.
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        android.os.SystemClock.sleep(400)
         val directory = File(rule.activity.filesDir, "qa").apply { mkdirs() }
         // Capture the physical display so Dialog windows, their dimming and fixed
         // headers are included; a Compose root can belong to the underlying Activity.
