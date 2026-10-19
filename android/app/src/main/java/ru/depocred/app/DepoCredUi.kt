@@ -24,8 +24,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,11 +45,13 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -114,7 +119,7 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 800.dp).fillMaxSize()) {
                         AppHeader(state.tab)
-                        Column(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (keyboard) 0.dp else 116.dp).verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (keyboard) 0.dp else 116.dp).clipToBounds().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             when (state.tab) {
                                 "loan", "deposit" -> {
                                     CalculatorForm(state, model)
@@ -183,7 +188,7 @@ private fun appTypography(): Typography {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Column(Modifier.width(IntrinsicSize.Max)) {
-                Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 10.sp, color = p.muted, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
+                Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 11.sp, color = p.muted, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
                 Box(Modifier.fillMaxWidth().padding(top = 3.dp).height(1.5.dp).background(p.primary, CircleShape))
             }
             Text(when (tab) { "loan" -> "Кредитный калькулятор"; "deposit" -> "Депозитный калькулятор"; "history" -> "Сохраненные расчеты"; else -> "О приложении" }, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.primary, modifier = Modifier.padding(top = 6.dp))
@@ -252,6 +257,10 @@ private fun Modifier.outsideShadow(shape: RoundedCornerShape, opacity: Float) = 
 @Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false) {
     val p = LocalPalette.current
     val focus = LocalFocusManager.current
+    var focused by remember { mutableStateOf(false) }
+    val fieldStyle = TextStyle(fontFamily = Inter, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (calculated) p.primary else p.text)
+    val measurer = rememberTextMeasurer()
+    val suffixX = with(LocalDensity.current) { measurer.measure(NumberGrouping.filter(AnnotatedString(form.text(key))).text, fieldStyle).size.width.toDp() + 4.dp }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Label(label)
         BasicTextField(value = form.text(key), onValueChange = { raw ->
@@ -259,16 +268,18 @@ private fun Modifier.outsideShadow(shape: RoundedCornerShape, opacity: Float) = 
             val pattern = if (integer) Regex("[0-9]{0,3}") else Regex("[0-9]{0,12}(\\.[0-9]{0,2})?")
             if (pattern.matches(value)) onEdit(key, value)
         }, enabled = enabled && !(calculated && lockCalculated), singleLine = true, visualTransformation = NumberGrouping,
-            textStyle = TextStyle(fontFamily = Inter, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (calculated) p.primary else p.text),
+            textStyle = fieldStyle,
             keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }), cursorBrush = SolidColor(p.primary),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
-                .clip(RoundedCornerShape(12.dp)).background(if (calculated) p.primary.copy(alpha = .08f) else p.field).border(1.dp, if (calculated) p.primary.copy(alpha = .3f) else p.border, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).onFocusChanged { focused = it.isFocused }.testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
+                .clip(RoundedCornerShape(12.dp)).background(if (calculated) p.primary.copy(alpha = .05f) else if (enabled) p.field else p.field.copy(alpha = p.field.alpha * .5f)).border(1.dp, if (focused) p.primary else if (calculated) p.primary.copy(alpha = .4f) else if (enabled) p.border else p.border.copy(alpha = p.border.alpha * .5f), RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { inner() }
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                        inner()
+                        if (form.text(key).isNotEmpty() && suffixX < maxWidth - 20.dp) Text(suffix, color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterStart).offset(x = suffixX))
+                    }
                     if (form.text(key).isNotEmpty() && enabled && !calculated) Box(Modifier.size(24.dp).clickable { onEdit(key, "") }.semantics { contentDescription = "Очистить $label" }, contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_x, null, p.muted, 13) }
-                    if (form.text(key).isNotEmpty()) Text(suffix, color = p.muted, fontSize = 12.sp)
                 }
             })
     }
@@ -387,7 +398,7 @@ private val NumberGrouping = VisualTransformation { input ->
 @Composable private fun MetricPair(left: Pair<String, String>, right: Pair<String, String>, accent: Boolean = false) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) { Metric(left.first, left.second, Modifier.weight(1f), accent); Metric(right.first, right.second, Modifier.weight(1f), accent) }
 }
-@Composable private fun Line() { HorizontalDivider(color = LocalPalette.current.border.copy(alpha = .5f)) }
+@Composable private fun Line() { HorizontalDivider(color = if (LocalPalette.current.dark) Color.White.copy(alpha = .1f) else Color.Black.copy(alpha = .05f)) }
 
 @Composable private fun CalculationResult(entry: SavedCalculation, paymentType: String, onPaymentType: (String) -> Unit, onSave: (() -> Unit)? = null, onSchedule: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit, onDelete: (() -> Unit)? = null) {
     val p = LocalPalette.current
@@ -594,7 +605,7 @@ private val NumberGrouping = VisualTransformation { input ->
 }
 @Composable private fun ScheduleButton(icon: Int, description: String, onClick: () -> Unit) {
     val p = LocalPalette.current
-    Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(p.field).border(1.dp, p.border.copy(alpha = .5f), RoundedCornerShape(12.dp)).clickable(onClick = onClick).semantics { contentDescription = description; role = Role.Button }, contentAlignment = Alignment.Center) { Glyph(icon, null, p.primary, 20) }
+    Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(p.field).border(1.dp, if (p.dark) Color.White.copy(alpha = .1f) else Color(0xFFE2E8F0).copy(alpha = .5f), RoundedCornerShape(12.dp)).clickable(onClick = onClick).semantics { contentDescription = description; role = Role.Button }, contentAlignment = Alignment.Center) { Glyph(icon, null, p.primary, 20) }
 }
 
 @Composable private fun InfoScreen(settings: Settings, onSettings: (Settings) -> Unit, onLink: (String) -> Unit, onShareApp: () -> Unit) {
@@ -622,7 +633,7 @@ private val NumberGrouping = VisualTransformation { input ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     SKINS.forEach { (key, color) ->
                         val active = settings.skin == key
-                        Box(Modifier.size(40.dp).scale(if (active) 1.1f else 1f).then(if (active) Modifier.border(4.dp, if (p.dark) Color.White.copy(alpha = .1f) else Color(0xFFE5E5E5), RoundedCornerShape(15.dp)).padding(3.dp) else Modifier).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = if (active) 1f else .4f)).clickable { onSettings(settings.copy(skin = key)) }.semantics { contentDescription = when (key) { "emerald" -> "Изумрудная"; "blue" -> "Синяя"; "amber" -> "Янтарная"; "rose" -> "Розовая"; else -> "Фиолетовая" }; selected = active })
+                        Box(Modifier.size(40.dp).scale(if (active) 1.1f else 1f).then(if (active) Modifier.drawBehind { drawRoundRect(if (p.dark) Color.White.copy(alpha = .1f) else Color(0xFFE5E5E5), topLeft = Offset(-4.dp.toPx(), -4.dp.toPx()), size = Size(size.width + 8.dp.toPx(), size.height + 8.dp.toPx()), cornerRadius = CornerRadius(16.dp.toPx())) } else Modifier).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = if (active) 1f else .4f)).clickable { onSettings(settings.copy(skin = key)) }.semantics { contentDescription = when (key) { "emerald" -> "Изумрудная"; "blue" -> "Синяя"; "amber" -> "Янтарная"; "rose" -> "Розовая"; else -> "Фиолетовая" }; selected = active })
                     }
                 }
             }

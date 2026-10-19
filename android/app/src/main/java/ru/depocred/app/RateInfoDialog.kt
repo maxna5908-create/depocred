@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +41,7 @@ import kotlin.math.pow
                     IconButton(onClick = onClose) { Glyph(R.drawable.lucide_x, "Закрыть окно", p.muted, 20) }
                 }
                 HorizontalDivider(color = if (p.dark) Color.White.copy(alpha = .05f) else Color(0xFFF1F5F9))
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).testTag("${tag}_body").padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp), content = content)
+                Column(Modifier.weight(1f, fill = false).clipToBounds().verticalScroll(rememberScrollState()).testTag("${tag}_body").padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp), content = content)
                 if (confirm != null) {
                     HorizontalDivider(color = p.border.copy(alpha = .05f))
                     Box(Modifier.fillMaxWidth().background(if (p.dark) Color.White.copy(alpha = .05f) else Color(0xFFF8FAFC)).padding(16.dp)) {

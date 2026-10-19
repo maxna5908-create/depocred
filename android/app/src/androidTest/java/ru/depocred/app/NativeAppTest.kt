@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -33,11 +34,15 @@ class NativeAppTest {
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
         rule.waitUntil(120000) { model.state.current != null }
     }
-    private fun screenshot(name: String, tag: String? = null) {
+    private fun screenshot(name: String) {
         rule.runOnIdle { model.clearNotice() }
         rule.waitForIdle()
         val directory = File(rule.activity.filesDir, "qa").apply { mkdirs() }
-        File(directory, "$name.png").outputStream().use { (if (tag == null) rule.onAllNodes(isRoot()).onLast() else rule.onNodeWithTag(tag)).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Capture the physical display so Dialog windows, their dimming and fixed
+        // headers are included; a Compose root can belong to the underlying Activity.
+        val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
     }
     @Test fun loanCalculationHistoryScheduleAndRecreation() {
         screenshot("01-loan-light")
@@ -47,16 +52,16 @@ class NativeAppTest {
         rule.onNodeWithContentDescription("Информация: Номинальная ставка").performScrollTo().performClick()
         rule.onNodeWithText("ЭКСКУРС").assertIsDisplayed()
         rule.onNodeWithText("J = j / m").assertExists()
-        screenshot("07-nominal-info", "rate_info_nominal")
+        screenshot("07-nominal-info")
         rule.onNodeWithText("12,00% / 12 = 1,0000% в месяц").performScrollTo().assertIsDisplayed()
-        screenshot("08-nominal-steps", "rate_info_nominal")
+        screenshot("08-nominal-steps")
         rule.onNodeWithText("ПОНЯТНО").performClick()
         rule.onNodeWithContentDescription("Информация: Эффективная ставка").performScrollTo().performClick()
         rule.onNodeWithText("Prec = Σ [Mk / (1+r)^k]").assertExists()
-        screenshot("09-effective-info", "rate_info_effective")
+        screenshot("09-effective-info")
         rule.onNodeWithText("${money(1000000.0)} − ${money(17500.0)} = ${money(982500.0)}").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("ШАГ 3: ГОДОВАЯ ЭФФЕКТИВНАЯ СТАВКА").performScrollTo().assertIsDisplayed()
-        screenshot("10-effective-steps", "rate_info_effective")
+        rule.onNodeWithText("× 100% = ", substring = true).performScrollTo().assertIsDisplayed()
+        screenshot("10-effective-steps")
         rule.onNodeWithContentDescription("Закрыть окно").performClick()
         rule.onNodeWithContentDescription("Сохранить расчёт").performScrollTo().performClick()
         rule.onNodeWithTag("tab_history").performClick()
@@ -81,7 +86,7 @@ class NativeAppTest {
         rule.runOnIdle { assertTrue(model.state.current!!.result.finalAmount > 600000) }
         screenshot("04-deposit-results")
         rule.onNodeWithText("График начислений").performScrollTo().performClick()
-        rule.onNodeWithText("ПОПОЛНЕНИЯ").assertExists()
+        rule.onNode(hasText("ПОПОЛНЕНИЯ") and hasAnyAncestor(isDialog())).assertIsDisplayed()
         rule.onNodeWithText("% ЗА ПЕРИОД").assertExists()
         screenshot("13-deposit-schedule")
         rule.onNodeWithContentDescription("Назад").performClick()
