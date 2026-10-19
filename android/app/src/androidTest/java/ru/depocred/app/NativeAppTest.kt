@@ -46,6 +46,15 @@ class NativeAppTest {
     private fun keyboard(visible: Boolean) {
         rule.waitUntil(15000) { ViewCompat.getRootWindowInsets(rule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == visible }
     }
+    private fun nativeKeyboardAction(action: Int) {
+        // Check the EditorInfo served to the real API-35 keyboard, in addition to Compose semantics.
+        rule.waitUntil(10000) {
+            val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys input_method")
+            val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+            val flags = Regex("mCurEditorInfo:[\\s\\S]*?imeOptions=0x([0-9a-fA-F]+)").find(dump)?.groupValues?.get(1)?.toLongOrNull(16)
+            flags != null && flags.toInt() and android.view.inputmethod.EditorInfo.IME_MASK_ACTION == action
+        }
+    }
     private fun next(from: String, to: String) {
         rule.onNodeWithTag("field_$from").assert(hasImeAction(ImeAction.Next)).performImeAction()
         rule.onNodeWithTag("field_$to").assertIsFocused().assertIsDisplayed()
@@ -65,6 +74,7 @@ class NativeAppTest {
         next("amount", "rate"); rule.onNodeWithTag("field_rate").performTextReplacement("12")
         next("rate", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
         next("term", "fixed"); next("fixed", "commission")
+        nativeKeyboardAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
         rule.onNodeWithTag("field_commission").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
@@ -75,6 +85,7 @@ class NativeAppTest {
         rule.runOnIdle { assertEquals("total", model.state.form.target) }
         rule.onNodeWithTag("field_total").assertIsNotEnabled()
         next("payment", "down")
+        nativeKeyboardAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
         screenshot("18-long-form-next")
         rule.onNodeWithTag("field_down").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
@@ -85,6 +96,7 @@ class NativeAppTest {
         rule.onNodeWithText("Раз в месяц").performClick()
         rule.onNodeWithTag("field_term").performScrollTo().performClick()
         next("term", "addition")
+        nativeKeyboardAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
         screenshot("19-deposit-next")
         rule.onNodeWithTag("field_addition").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)

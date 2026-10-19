@@ -71,6 +71,8 @@ internal class FormNavigation(
     fun focus(field: String) {
         scope.launch {
             requesters[field]?.requestFocus()
+            // Let the new field establish its InputConnection before asking the IME to show.
+            withFrameNanos { }
             if (field == "paymentType") keyboard?.hide() else keyboard?.show()
             bringIntoView[field]?.bringIntoView()
         }

@@ -265,7 +265,17 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
     val keyboard = LocalSoftwareKeyboardController.current
     val navigation = LocalFormNavigation.current
     val next = navigation?.next(key)
+    val inputView = LocalView.current
     var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(focused, next) {
+        if (focused) {
+            // Refresh native EditorInfo after the focused field's IME options are applied.
+            // restartInput updates the action without hiding the keyboard window.
+            withFrameNanos { }
+            val inputMethod = inputView.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            inputMethod.restartInput(inputView)
+        }
+    }
     val fieldStyle = TextStyle(fontFamily = Inter, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (calculated) p.primary else p.text)
     val measurer = rememberTextMeasurer()
     val suffixX = with(LocalDensity.current) { measurer.measure(NumberGrouping.filter(AnnotatedString(form.text(key))).text, fieldStyle).size.width.toDp() + 4.dp }
