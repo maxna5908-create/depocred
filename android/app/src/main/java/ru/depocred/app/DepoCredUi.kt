@@ -104,7 +104,7 @@ private val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF1
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 800.dp).fillMaxSize()) {
                         AppHeader(state.tab)
-                        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (keyboard) 28.dp else 146.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (keyboard) 0.dp else 116.dp).verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             when (state.tab) {
                                 "loan", "deposit" -> {
                                     CalculatorForm(state, model)
