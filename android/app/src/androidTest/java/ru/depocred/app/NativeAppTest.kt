@@ -33,22 +33,37 @@ class NativeAppTest {
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
         rule.waitUntil(120000) { model.state.current != null }
     }
-    private fun screenshot(name: String) {
+    private fun screenshot(name: String, tag: String? = null) {
         rule.runOnIdle { model.clearNotice() }
         rule.waitForIdle()
         val directory = File(rule.activity.filesDir, "qa").apply { mkdirs() }
-        File(directory, "$name.png").outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(directory, "$name.png").outputStream().use { (if (tag == null) rule.onAllNodes(isRoot()).onLast() else rule.onNodeWithTag(tag)).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Test fun loanCalculationHistoryScheduleAndRecreation() {
         screenshot("01-loan-light")
-        field("amount", "1000000"); field("rate", "12"); field("term", "12"); calculate()
+        field("amount", "1000000"); field("rate", "12"); field("term", "12"); field("fixed", "2500"); field("commission", "1.5"); calculate()
         rule.runOnIdle { assertEquals(88848.788678, model.state.current!!.result.firstPayment, .01) }
         screenshot("02-loan-results")
+        rule.onNodeWithContentDescription("Информация: Номинальная ставка").performScrollTo().performClick()
+        rule.onNodeWithText("ЭКСКУРС").assertIsDisplayed()
+        rule.onNodeWithText("J = j / m").assertExists()
+        screenshot("07-nominal-info", "rate_info_nominal")
+        rule.onNodeWithText("12,00% / 12 = 1,0000% в месяц").performScrollTo().assertIsDisplayed()
+        screenshot("08-nominal-steps", "rate_info_nominal")
+        rule.onNodeWithText("ПОНЯТНО").performClick()
+        rule.onNodeWithContentDescription("Информация: Эффективная ставка").performScrollTo().performClick()
+        rule.onNodeWithText("Prec = Σ [Mk / (1+r)^k]").assertExists()
+        screenshot("09-effective-info", "rate_info_effective")
+        rule.onNodeWithText("${money(1000000.0)} − ${money(17500.0)} = ${money(982500.0)}").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("ШАГ 3: ГОДОВАЯ ЭФФЕКТИВНАЯ СТАВКА").performScrollTo().assertIsDisplayed()
+        screenshot("10-effective-steps", "rate_info_effective")
+        rule.onNodeWithContentDescription("Закрыть окно").performClick()
         rule.onNodeWithContentDescription("Сохранить расчёт").performScrollTo().performClick()
         rule.onNodeWithTag("tab_history").performClick()
         rule.runOnIdle { assertEquals(1, model.state.history.size) }
         rule.onNodeWithText("График платежей").performScrollTo().performClick()
         rule.onNodeWithTag("schedule").assertExists()
+        screenshot("11-loan-schedule")
         rule.onNodeWithContentDescription("Назад").performClick()
         rule.activityRule.scenario.recreate()
         rule.waitForIdle()
@@ -57,6 +72,7 @@ class NativeAppTest {
     }
     @Test fun depositOptionsAndReverseParameters() {
         rule.onNodeWithTag("tab_deposit").performClick()
+        screenshot("12-deposit-form")
         field("amount", "250000"); field("rate", "13.5"); field("term", "37")
         rule.onNodeWithContentDescription("Пополнение").performScrollTo().performClick()
         rule.onNodeWithText("Раз в месяц").performClick()
@@ -64,6 +80,11 @@ class NativeAppTest {
         calculate()
         rule.runOnIdle { assertTrue(model.state.current!!.result.finalAmount > 600000) }
         screenshot("04-deposit-results")
+        rule.onNodeWithText("График начислений").performScrollTo().performClick()
+        rule.onNodeWithText("ПОПОЛНЕНИЯ").assertExists()
+        rule.onNodeWithText("% ЗА ПЕРИОД").assertExists()
+        screenshot("13-deposit-schedule")
+        rule.onNodeWithContentDescription("Назад").performClick()
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
         field("amount", "100000"); field("rate", "12"); field("term", "12")
         rule.runOnIdle { assertTrue(model.state.form.number("final") > 112000); assertEquals("final", model.state.form.target) }
@@ -105,6 +126,7 @@ class NativeAppTest {
     }
     @Test fun settingsAndLocalStoreSurviveReload() {
         rule.onNodeWithTag("tab_info").performClick()
+        screenshot("14-info-light")
         rule.onNodeWithText("Темная").performScrollTo().performClick()
         rule.onNodeWithContentDescription("Фиолетовая").performScrollTo().performClick()
         screenshot("05-info-dark")

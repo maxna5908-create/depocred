@@ -14,8 +14,8 @@ cd android
 ./gradlew testDebugUnitTest lintRelease assembleDebug
 ```
 
-Версия читается из `../src/lib/version.ts`: `BUILD_VERSION=25` означает
-`versionCode=25`, `versionName=1.0.25`. При обновлении увеличивать общий счётчик.
+Версия читается из `../src/lib/version.ts`: `BUILD_VERSION=26` означает
+`versionCode=26`, `versionName=1.0.26`. При обновлении увеличивать общий счётчик.
 
 Для подписанной сборки передать переменные окружения:
 
