@@ -164,31 +164,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         var form = state.form.with(key, value).copy(autoError = null)
         if (state.reverse) {
             if (state.tab == "loan") {
-                val keys = listOf("term", "payment", "total")
-                if (form.target != null && keys.filter { it != form.target }.any { form.number(it) <= 0 }) {
-                    form = form.with(form.target!!, "").copy(target = null)
+                if (key == "down" && form.number("down") > form.number("amount")) {
+                    form = form.with("down", numberText(form.number("amount")))
+                    notify("Взнос не может быть больше суммы кредита/покупки")
                 }
-                if (form.target == null && keys.count { form.number(it) > 0 } == 2) form = form.copy(target = keys.first { form.number(it) <= 0 })
-                if (form.target != null && form.number("amount") > form.number("down") && form.text("paymentType").isNotBlank()) {
-                    val solved = Finance.loanMissing(form.number("amount") - form.number("down"), form.number("term"), form.number("payment"), form.number("total"), form.text("paymentType"), form.target!!)
-                    if (solved.isFinite() && solved > 0) form = form.with(form.target!!, numberText(solved))
-                }
-            } else {
-                val keys = listOf("amount", "rate", "term", "final")
-                if (key in keys) {
-                    if (value.isBlank() && form.target != null && key != form.target) form = form.with(form.target!!, "").copy(target = null)
-                    form = form.copy(manual = if (value.isBlank()) form.manual.filter { it != key } else (form.manual.filter { it != key } + key).takeLast(3))
-                }
-                val filled = keys.filter { form.text(it).isNotBlank() && (form.number(it) > 0 || it == "rate") }
-                val target = if (filled.size == 3) keys.first { it !in filled } else if (filled.size == 4) keys.firstOrNull { it !in form.manual } else null
-                form = form.copy(target = target)
-                if (target != null) {
-                    try {
-                        val solved = Finance.depositMissing(form.deposit(), form.number("final"), target)
-                        form = form.with(target, numberText(solved))
-                    } catch (e: IllegalArgumentException) { form = form.copy(autoError = e.message) }
-                }
-            }
+                form = ReverseForms.loan(form)
+            } else form = ReverseForms.deposit(form, key)
         }
         state = state.copy(forms = state.forms + (state.formKey to form), current = null, calculating = false)
         persist()
@@ -224,9 +205,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     form = form.with("rate", numberText(rate))
                 } else if (snapshot.reverse && snapshot.tab == "deposit") {
                     form.autoError?.let { throw IllegalArgumentException(it) }
-                    require(form.number("final") >= form.number("amount")) { "Итоговая сумма не может быть меньше суммы депозита" }
-                    // Respect the parameter chosen by the 3-of-4 solver; never silently replace a manually entered rate.
-                    require(form.text("rate").isNotBlank()) { "Заполните три параметра депозита" }
+                    require(form.number("final") > form.number("amount")) { "Итоговая сумма должна быть больше суммы депозита" }
+                    // Like the PWA, Calculate reconciles the rate with the final target.
+                    form = form.with("rate", numberText(Finance.depositMissing(form.deposit(), form.number("final"), "rate")))
                 } else require(form.text("rate").isNotBlank()) { "Укажите процентную ставку (в том числе 0%)" }
                 val result = withContext(Dispatchers.Default) {
                     if (snapshot.tab == "loan") Finance.loan(form.loan()) else Finance.deposit(form.deposit())
@@ -238,10 +219,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         return true
     }
+    fun reverseLoanAccess(): Boolean {
+        if (state.form.number("amount") > 0) return true
+        inputFocusRequest = InputFocusRequest(state.formKey, "amount", ++focusSequence)
+        notify("Сначала укажите сумму кредита")
+        return false
+    }
     fun paymentType(type: String) {
-        val recalculate = state.current != null
-        edit("paymentType", type)
-        if (recalculate) calculate()
+        if (state.reverse && !reverseLoanAccess()) return
+        if (state.form.text("paymentType") == type) return
+        val current = state.current
+        if (state.tab != "loan" || state.reverse || current == null) { edit("paymentType", type); return }
+        // Keep the result mounted and the scroll anchor intact during tab switches.
+        calculationJob?.cancel()
+        val form = state.form.with("paymentType", type)
+        val formKey = state.formKey
+        state = state.copy(forms = state.forms + (formKey to form), calculating = true)
+        calculationJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) { Finance.loan(form.loan()) }
+                state = state.copy(current = current.copy(result = result), calculating = false)
+                persist()
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { state = state.copy(calculating = false); notify(e.message ?: "Проверьте параметры расчёта") }
+        }
     }
     fun saveCurrent() {
         val current = state.current ?: return
@@ -264,8 +265,9 @@ private fun UiState.requiredInput(): Pair<String, String>? {
         if (tab == "deposit" && reverse) {
             f.autoError?.let { return (f.target ?: "final") to it }
             if (f.number("final") <= 0) return "final" to "Заполните три параметра депозита"
+            if (f.number("final") <= f.number("amount")) return "final" to "Итоговая сумма должна быть больше суммы депозита"
         }
-        if (f.text("rate").isBlank()) return "rate" to if (reverse) "Заполните три параметра депозита" else "Укажите процентную ставку (в том числе 0%)"
+        if (!reverse && f.text("rate").isBlank()) return "rate" to "Укажите процентную ставку (в том числе 0%)"
         if (f.number("term") !in 1.0..999.0) return "term" to "Укажите срок от 1 до 999 месяцев"
     }
     return null

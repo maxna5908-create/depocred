@@ -158,12 +158,12 @@ object Finance {
     fun loanMissing(principal: Double, term: Double, payment: Double, total: Double, type: String, field: String): Double {
         val diff = type == "differentiated"
         return when (field) {
-            "total" -> if (diff) round(principal * (term - 1) / (2 * term) + payment * (term + 1) / 2) else term * payment
-            "payment" -> if (diff) round((2 * total - principal * (term - 1) / term) / (term + 1)) else round(total / term)
+            "total" -> if (diff) floor(.5 + principal * (term - 1) / (2 * term) + payment * (term + 1) / 2) else term * payment
+            "payment" -> if (diff) floor(.5 + (2 * total - principal * (term - 1) / term) / (term + 1)) else floor(.5 + total / term)
             "term" -> if (diff) {
                 val b = principal + payment - 2 * total
-                round((-b + sqrt(b * b + 4 * payment * principal)) / (2 * payment))
-            } else round(total / payment)
+                floor(.5 + (-b + sqrt(b * b + 4 * payment * principal)) / (2 * payment))
+            } else floor(.5 + total / payment)
             else -> 0.0
         }
     }

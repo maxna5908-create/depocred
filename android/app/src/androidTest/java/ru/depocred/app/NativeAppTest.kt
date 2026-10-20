@@ -86,8 +86,10 @@ class NativeAppTest {
         rule.onNodeWithTag("field_commission").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
-        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithTag("field_term").assertDoesNotExist()
         rule.onNodeWithTag("field_amount").performScrollTo().performClick().performTextReplacement("1000000")
+        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithTag("field_amount").performScrollTo().performClick()
         next("amount", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
         next("term", "payment"); rule.onNodeWithTag("field_payment").performTextReplacement("90000")
         rule.runOnIdle { assertEquals("total", model.state.form.target) }
@@ -199,11 +201,72 @@ class NativeAppTest {
         field("amount", "100000"); field("rate", "12"); field("term", "12")
         rule.runOnIdle { assertTrue(model.state.form.number("final") > 112000); assertEquals("final", model.state.form.target) }
         field("rate", "")
-        rule.runOnIdle { assertEquals("", model.state.form.text("final")) }
-        field("final", "120000"); field("term", "12")
+        rule.runOnIdle { assertTrue(model.state.form.number("final") > 112000); assertEquals("", model.state.form.text("rate")) }
+        rule.runOnIdle { model.reset() }
+        field("amount", "100000"); field("final", "120000"); field("term", "12")
         rule.runOnIdle { assertEquals("rate", model.state.form.target); assertTrue(model.state.form.number("rate") > 18) }
         calculate()
         rule.runOnIdle { assertEquals(120000.0, model.state.current!!.result.finalAmount, 10.0) }
+    }
+    @Test fun resultTabsKeepTheCardMountedAndTheScrollPositionStable() {
+        field("amount", "150000"); field("rate", "16.8"); field("term", "28")
+        calculate()
+        rule.onNodeWithText("Аннуитетный").performScrollTo().assertIsDisplayed()
+        rule.waitForIdle()
+        fun scrollValue() = rule.onNodeWithTag("content").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+        val revision = model.state.resultRevision
+        for (type in listOf("differentiated", "annuity", "differentiated", "annuity")) {
+            val before = scrollValue()
+            rule.onNodeWithText(if (type == "annuity") "Аннуитетный" else "Дифференцированный").performClick()
+            rule.runOnIdle { assertNotNull(model.state.current) }
+            rule.waitUntil(10000) { !model.state.calculating && model.state.current?.result?.loan?.paymentType == type }
+            rule.onNodeWithTag("calculation_result").assertExists()
+            assertEquals(revision, model.state.resultRevision)
+            assertEquals(before, scrollValue(), 1f)
+        }
+        screenshot("21-floating-menu-results")
+        // Content viewport continues behind the menu and its outside margins.
+        val content = rule.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot
+        val menu = rule.onNodeWithTag("bottom_menu").fetchSemanticsNode().boundsInRoot
+        assertTrue(content.bottom >= menu.bottom)
+        rule.runOnIdle { model.settings(model.state.settings.copy(theme = "dark")) }
+        screenshot("22-floating-menu-dark")
+    }
+    @Test fun reverseDepositManualEditsAndLoanPrerequisitesMatchThePwa() {
+        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithTag("field_term").assertDoesNotExist()
+        rule.onNodeWithTag("field_amount").assertIsFocused()
+        field("amount", "100000")
+        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        field("term", "12"); field("payment", "10000")
+        rule.onNodeWithTag("field_total").assertIsNotEnabled()
+        rule.runOnIdle { assertEquals("120000", model.state.form.text("total")) }
+        field("payment", "")
+        rule.onNodeWithTag("field_total").assertIsEnabled()
+        rule.runOnIdle { assertEquals("", model.state.form.text("total")) }
+        rule.onNodeWithTag("field_down").performScrollTo().performClick().performImeAction()
+        keyboard(false)
+        rule.onNodeWithTag("tab_deposit").performClick()
+        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        field("amount", "100000"); field("rate", "12"); field("term", "12")
+        field("final", "")
+        rule.runOnIdle {
+            assertEquals("", model.state.form.text("final"))
+            assertEquals("100000", model.state.form.text("amount")); assertEquals("12", model.state.form.text("rate"))
+        }
+        rule.runOnIdle { model.reset() }
+        field("amount", "100000"); field("final", "120000"); field("rate", "12")
+        rule.runOnIdle { assertEquals("term", model.state.form.target) }
+        field("rate", "")
+        rule.runOnIdle { assertEquals("", model.state.form.text("rate")); assertTrue(model.state.form.number("term") > 0) }
+        calculate()
+        rule.runOnIdle {
+            val result = model.state.current!!.result
+            assertEquals(120000.0, result.finalAmount, 20.0)
+            assertEquals(result.deposit!!.rate, model.state.form.number("rate"), 0.0)
+        }
+        screenshot("23-reverse-deposit-result")
     }
     @Test fun nativePdfHasAllPagesAndReadableShareUri() {
         val result = Finance.loan(LoanInput(1000000.0, 12.0, 999, 500.0, 1.0))

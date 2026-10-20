@@ -40,6 +40,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -110,6 +114,8 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
             val scope = rememberCoroutineScope()
             val scroll = key(state.tab) { rememberScrollState() }
+            val backdrop = rememberGraphicsLayer()
+            var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
             val focus = LocalFocusManager.current
             var resultY by remember { mutableIntStateOf(0) }
             val density = LocalDensity.current
@@ -122,15 +128,18 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             BackHandler(enabled = !splash && state.tab != "loan" && selected == null) { model.tab("loan") }
             Box(Modifier.fillMaxSize().background(palette.background)) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 800.dp).fillMaxSize()) {
+                    Column(Modifier.widthIn(max = 800.dp).fillMaxSize().onGloballyPositioned { backdropOrigin = it.positionInRoot() }.drawWithContent {
+                        backdrop.record { drawRect(palette.background); this@drawWithContent.drawContent() }
+                        drawLayer(backdrop)
+                    }) {
                         AppHeader(state.tab)
-                        Column(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (keyboard) 0.dp else 116.dp).clipToBounds().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(Modifier.weight(1f).fillMaxWidth().clipToBounds().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (keyboard) 28.dp else 144.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             when (state.tab) {
                                 "loan", "deposit" -> {
                                     CalculatorForm(state, model)
                                     if (state.current != null) {
                                         // Position relative to scroll content, independent of keyboard/screen size.
-                                        Box(Modifier.onGloballyPositionedCompat { y -> resultY = y }) {
+                                        Box(Modifier.testTag("calculation_result").onGloballyPositionedCompat { y -> resultY = y }) {
                                             CalculationResult(state.current, state.form.text("paymentType"), model::paymentType,
                                                 onSave = model::saveCurrent, onSchedule = { selectedId = state.current.id }, onExport = onExport)
                                         }
@@ -145,7 +154,7 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                             }
                         }
                     }
-                    if (!keyboard) BottomMenu(state.tab, { focus.clearFocus(); model.tab(it) }, Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp).widthIn(max = 752.dp))
+                    if (!keyboard) BottomMenu(state.tab, { focus.clearFocus(); model.tab(it) }, Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp).widthIn(max = 752.dp), backdrop, backdropOrigin)
                     model.notice?.let { message ->
                         Surface(Modifier.align(Alignment.TopCenter).padding(16.dp).widthIn(max = 520.dp).clickable { model.clearNotice() }, shape = RoundedCornerShape(16.dp), color = palette.solid, border = BorderStroke(1.dp, palette.primary), shadowElevation = 8.dp) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -201,9 +210,20 @@ private fun appTypography(): Typography {
         Glyph(R.drawable.lucide_coins, null, p.primary, 32)
     }
 }
-@Composable private fun BottomMenu(tab: String, onTab: (String) -> Unit, modifier: Modifier) {
+@Composable private fun BottomMenu(tab: String, onTab: (String) -> Unit, modifier: Modifier, backdrop: GraphicsLayer, backdropOrigin: Offset) {
     val p = LocalPalette.current
-    Box(modifier.fillMaxWidth().outsideShadow(RoundedCornerShape(20.dp), .16f).background(if (p.dark) Color(0xFF667080).copy(alpha = .96f) else Color(0xFFE9EBEE).copy(alpha = .97f), RoundedCornerShape(20.dp)).border(1.dp, Color.White.copy(alpha = if (p.dark) .1f else .2f), RoundedCornerShape(20.dp))) {
+    val shape = RoundedCornerShape(20.dp)
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val blurSupported = android.os.Build.VERSION.SDK_INT >= 31
+    Box(modifier.fillMaxWidth().testTag("bottom_menu").onGloballyPositioned { origin = it.positionInRoot() }
+        .outsideShadow(shape, .16f).clip(shape).border(1.dp, Color.White.copy(alpha = if (p.dark) .14f else .4f), shape)) {
+        // Blur only the content behind the floating menu; labels and icons stay sharp.
+        if (blurSupported) Box(Modifier.matchParentSize().graphicsLayer {
+            renderEffect = BlurEffect(18.dp.toPx(), 18.dp.toPx(), TileMode.Clamp)
+        }.drawWithContent {
+            translate(backdropOrigin.x - origin.x, backdropOrigin.y - origin.y) { drawLayer(backdrop) }
+        })
+        Box(Modifier.matchParentSize().background((if (p.dark) Color(0xFF374151) else Color(0xFFE9EBEE)).copy(alpha = if (blurSupported) .90f else .96f)))
         Row(Modifier.heightIn(min = 80.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             listOf(Triple("loan", "КРЕДИТ", R.drawable.lucide_credit_card), Triple("deposit", "ДЕПОЗИТ", R.drawable.lucide_piggy_bank), Triple("history", "ИСТОРИЯ", R.drawable.lucide_bookmark), Triple("info", "ИНФО", R.drawable.lucide_info)).forEach { (id, label, icon) ->
                 val active = tab == id
@@ -259,7 +279,7 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
     }
 }
 @Composable private fun Label(text: String) { Text(text.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .7.sp, color = LocalPalette.current.muted, modifier = Modifier.padding(start = 4.dp)) }
-@Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false) {
+@Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false, onFocused: (() -> Unit)? = null) {
     val p = LocalPalette.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -269,6 +289,7 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(focused, next) {
         if (focused) {
+            onFocused?.invoke()
             // Refresh native EditorInfo after the focused field's IME options are applied.
             // restartInput updates the action without hiding the keyboard window.
             withFrameNanos { }
@@ -292,7 +313,7 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
             keyboardOptions = KeyboardOptions(keyboardType = if (integer) KeyboardType.Number else KeyboardType.Decimal, imeAction = if (next == null) ImeAction.Done else ImeAction.Next),
             keyboardActions = KeyboardActions(onNext = { next?.let { navigation?.focus(it) } }, onDone = { focus.clearFocus(); keyboard?.hide() }), cursorBrush = SolidColor(p.primary),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(navigation?.requesters?.get(key)?.let { Modifier.focusRequester(it) } ?: Modifier).onFocusChanged { focused = it.isFocused }.testTag("field_$key").semantics { contentDescription = label; if (calculated) stateDescription = "Рассчитано автоматически" }
-                .clip(RoundedCornerShape(12.dp)).background(if (calculated) p.primary.copy(alpha = .05f) else if (enabled) p.field else p.field.copy(alpha = p.field.alpha * .5f)).border(1.dp, if (focused) p.primary else if (calculated) p.primary.copy(alpha = .4f) else if (enabled) p.border else p.border.copy(alpha = p.border.alpha * .5f), RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+                .clip(RoundedCornerShape(12.dp)).background(if (!enabled || calculated && lockCalculated) p.field.copy(alpha = p.field.alpha * .5f) else Color.Transparent).border(1.dp, if (focused) p.primary else if (calculated) p.primary.copy(alpha = .4f) else if (enabled) p.border else p.border.copy(alpha = p.border.alpha * .5f), RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(1f)) {
@@ -331,7 +352,7 @@ private val NumberGrouping = VisualTransformation { input ->
     val requesters = remember(state.formKey) { keys.associateWith { FocusRequester() } }
     val bringIntoView = remember(state.formKey) { keys.associateWith { BringIntoViewRequester() } }
     val order = when {
-        loan && state.reverse -> listOf("amount", "term", "payment", "total", "down").filter { it != form.target }
+        loan && state.reverse -> (if (form.text("paymentType").isBlank()) listOf("amount") else listOf("amount", "term", "payment", "total", "down")).filter { it != form.target }
         loan -> listOf("amount", "rate", "term", "fixed", "commission")
         else -> listOf("amount") + (if (state.reverse) listOf("final") else emptyList()) + listOf("rate", "term") + (if (form.text("period") != "none") listOf("addition") else emptyList())
     }
@@ -358,18 +379,20 @@ private val NumberGrouping = VisualTransformation { input ->
                 Column(Modifier.focusRequester(requesters.getValue("paymentType")).bringIntoViewRequester(bringIntoView.getValue("paymentType")).focusable(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Label("Тип ежемесячного платежа")
                 listOf("annuity" to "Аннуитетный — фиксированный", "differentiated" to "Дифференцированный — уменьшаемый").forEach { (key, label) ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).clickable { model.edit("paymentType", key) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).clickable { model.paymentType(key) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(16.dp).border(2.dp, if (form.text("paymentType") == key) p.primary else p.muted.copy(alpha = .4f), CircleShape), contentAlignment = Alignment.Center) { if (form.text("paymentType") == key) Box(Modifier.size(8.dp).background(p.primary, CircleShape)) }
                         Text(label, fontSize = 11.sp, color = p.text)
                     }
                 }
                 }
+                if (form.text("paymentType").isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Numeric("Срок (мес.)", "term", form, model::edit, Modifier.weight(1f), "мес.", true, calculated = form.target == "term", lockCalculated = true)
-                    Numeric(if (form.text("paymentType") == "differentiated") "Первый платёж (₽)" else "Платёж (₽)", "payment", form, model::edit, Modifier.weight(1f), calculated = form.target == "payment", lockCalculated = true)
+                    Numeric("Срок (мес.)", "term", form, model::edit, Modifier.weight(1f), "мес.", true, calculated = form.target == "term", lockCalculated = true, onFocused = { model.reverseLoanAccess() })
+                    Numeric(if (form.text("paymentType") == "differentiated") "Первый платёж (₽)" else "Платёж (₽)", "payment", form, model::edit, Modifier.weight(1f), calculated = form.target == "payment", lockCalculated = true, onFocused = { model.reverseLoanAccess() })
                 }
-                Numeric("Сумма возврата (₽)", "total", form, model::edit, calculated = form.target == "total", lockCalculated = true)
+                Numeric("Сумма возврата (₽)", "total", form, model::edit, calculated = form.target == "total", lockCalculated = true, onFocused = { model.reverseLoanAccess() })
                 Numeric("Первоначальный взнос (₽)", "down", form, model::edit)
+                }
             } else {
                 if (!loan && state.reverse) Numeric("Итоговая сумма (₽)", "final", form, model::edit, calculated = form.target == "final")
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -404,7 +427,7 @@ private val NumberGrouping = VisualTransformation { input ->
     var open by rememberSaveable { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Label(label)
-        Surface(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable { open = true }.semantics { contentDescription = label; role = Role.DropdownList }, shape = RoundedCornerShape(12.dp), color = p.field, border = BorderStroke(1.dp, p.border)) {
+        Surface(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable { open = true }.semantics { contentDescription = label; role = Role.DropdownList }, shape = RoundedCornerShape(12.dp), color = Color.Transparent, border = BorderStroke(1.dp, p.border)) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(options.firstOrNull { it.first == value }?.second ?: "Выбрать", fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Box(Modifier.size(6.dp).background(p.primary, CircleShape))
