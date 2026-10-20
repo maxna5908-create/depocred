@@ -369,8 +369,8 @@ class NativeAppTest {
         rule.onNodeWithTag("tab_leasing").performClick()
         rule.onNodeWithContentDescription("График платежей").revealAndClick()
         LEASE_TYPES.forEach { (key, label) ->
-            rule.onNodeWithText(label).assertExists()
-            rule.onNodeWithText(LEASE_TYPE_DESCRIPTIONS.getValue(key)).assertExists()
+            rule.onNode(hasText(label) and hasAnyAncestor(isDialog())).assertExists()
+            rule.onNode(hasText(LEASE_TYPE_DESCRIPTIONS.getValue(key)) and hasAnyAncestor(isDialog())).assertExists()
         }
         screenshot("44-leasing-payment-descriptions")
         rule.onNodeWithContentDescription("Закрыть окно").performClick()
