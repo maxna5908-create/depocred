@@ -7,7 +7,14 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -96,12 +103,12 @@ internal data class Palette(val dark: Boolean, val primary: Color) {
     val solid get() = if (dark) Color(0xFF0F172A) else Color(0xFFF9FAFB)
     val background get() = Brush.radialGradient(listOf(if (dark) Color(0xFF374151) else Color(0xFFF9FAFB), if (dark) Color(0xFF111827) else Color(0xFFE5E7EB)), center = Offset.Zero, radius = 2400f)
 }
-internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF10B981)) }
+internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFFF59E0B)) }
 
 @Composable fun DepoCredApp(model: AppViewModel, onExport: (SavedCalculation, Boolean) -> Unit, onLink: (String) -> Unit, onShareApp: () -> Unit) {
     val state = model.state
     val dark = state.settings.theme == "dark" || state.settings.theme == "system" && isSystemInDarkTheme()
-    val palette = Palette(dark, SKINS[state.settings.skin] ?: SKINS.getValue("emerald"))
+    val palette = Palette(dark, SKINS[state.settings.skin] ?: SKINS.getValue("amber"))
     val scheme = if (dark) darkColorScheme(primary = palette.primary, background = palette.solid, surface = palette.solid, onSurface = palette.text)
         else lightColorScheme(primary = palette.primary, background = palette.solid, surface = palette.solid, onSurface = palette.text)
     // Small text must use its own natural line height, not Material's 24sp body line height.
@@ -168,12 +175,13 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                                         }
                                     }
                                 }
+                                "leasing" -> LeasingPlaceholder()
                                 "history" -> HistoryScreen(state.history, model::delete, { selectedId = it.id }, onExport)
                                 "info" -> InfoScreen(state.settings, model::settings, onLink, onShareApp)
                             }
                         }
                     }
-                    if (!keyboard) BottomMenu(state.tab, { focus.clearFocus(); model.tab(it) }, Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp).widthIn(max = 752.dp), backdrop, backdropOrigin)
+                    if (!keyboard) BottomMenu(state.tab, { focus.clearFocus(); model.tab(it) }, Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 20.dp).widthIn(max = 752.dp), backdrop, backdropOrigin)
                     model.notice?.let { message ->
                         Surface(Modifier.align(Alignment.TopCenter).padding(16.dp).widthIn(max = 520.dp).clickable { model.clearNotice() }, shape = RoundedCornerShape(16.dp), color = palette.solid, border = BorderStroke(1.dp, palette.primary), shadowElevation = 8.dp) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -230,14 +238,14 @@ private fun appTypography(): Typography {
                 Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 11.sp, color = p.muted, letterSpacing = 1.1.sp, fontWeight = FontWeight.Medium)
                 Box(Modifier.fillMaxWidth().padding(top = 3.dp).height(1.5.dp).background(p.primary, CircleShape))
             }
-            Text(when (tab) { "loan" -> "Кредитный калькулятор"; "deposit" -> "Депозитный калькулятор"; "history" -> "Сохраненные расчеты"; else -> "О приложении" }, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.primary, modifier = Modifier.padding(top = 6.dp))
+            Text(when (tab) { "loan" -> "Кредитный калькулятор"; "deposit" -> "Депозитный калькулятор"; "leasing" -> "Лизинг"; "history" -> "Сохраненные расчеты"; else -> "О приложении" }, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.primary, modifier = Modifier.padding(top = 6.dp))
         }
         Glyph(R.drawable.lucide_coins, null, p.primary, 32)
     }
 }
 @Composable private fun BottomMenu(tab: String, onTab: (String) -> Unit, modifier: Modifier, backdrop: GraphicsLayer, backdropOrigin: Offset) {
     val p = LocalPalette.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(percent = 50)
     var origin by remember { mutableStateOf(Offset.Zero) }
     val blurSupported = android.os.Build.VERSION.SDK_INT >= 31
     Box(modifier.fillMaxWidth().testTag("bottom_menu").onGloballyPositioned { origin = it.positionInRoot() }
@@ -249,15 +257,56 @@ private fun appTypography(): Typography {
             translate(backdropOrigin.x - origin.x, backdropOrigin.y - origin.y) { drawLayer(backdrop) }
         })
         Box(Modifier.matchParentSize().background((if (p.dark) Color(0xFF374151) else Color(0xFFE9EBEE)).copy(alpha = if (blurSupported) .90f else .96f)))
-        Row(Modifier.heightIn(min = 80.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf(Triple("loan", "КРЕДИТ", R.drawable.lucide_credit_card), Triple("deposit", "ДЕПОЗИТ", R.drawable.lucide_piggy_bank), Triple("history", "ИСТОРИЯ", R.drawable.lucide_bookmark), Triple("info", "ИНФО", R.drawable.lucide_info)).forEach { (id, label, icon) ->
-                val active = tab == id
-                val tint = if (active) p.primary else p.text.copy(alpha = .4f)
-                Column(Modifier.weight(1f).selectableCompat(active) { onTab(id) }.testTag("tab_$id").padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Box(Modifier.size(36.dp).background(if (active) p.primary.copy(alpha = .1f) else Color.Transparent, RoundedCornerShape(9.dp)).border(1.dp, if (active) p.primary.copy(alpha = .3f) else Color.Transparent, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) { Glyph(icon, null, tint, 20) }
-                    Text(label, fontSize = 10.sp, letterSpacing = .7.sp, fontWeight = FontWeight.Bold, color = tint)
-                }
+        Row(Modifier.fillMaxWidth().height(80.dp).padding(4.dp).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+            listOf(
+                Triple("deposit", "ДЕПОЗИТ", R.drawable.lucide_piggy_bank),
+                Triple("loan", "КРЕДИТ", R.drawable.lucide_credit_card),
+                Triple("leasing", "ЛИЗИНГ", R.drawable.lucide_car_front),
+                Triple("history", "ИСТОРИЯ", R.drawable.lucide_bookmark),
+                Triple("info", "ИНФО", R.drawable.lucide_info)
+            ).forEach { (id, label, icon) ->
+                MenuItem(id, label, icon, tab == id, { onTab(id) }, Modifier.weight(1f).fillMaxHeight())
             }
+        }
+    }
+}
+@Composable private fun MenuItem(id: String, label: String, icon: Int, active: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val p = LocalPalette.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    var tapFlash by remember { mutableStateOf(false) }
+    var tapSequence by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tapSequence) {
+        if (tapSequence > 0) { tapFlash = true; delay(160); tapFlash = false }
+    }
+    // The reference crossfades capsules at their own tabs; it does not slide a
+    // highlight across unrelated tabs. The short neutral flash is the tap feedback.
+    val background by animateColorAsState(
+        p.text.copy(alpha = when {
+            pressed || tapFlash -> if (p.dark) .16f else .11f
+            active -> if (p.dark) .08f else .05f
+            else -> 0f
+        }), tween(if (pressed || tapFlash) 70 else 220, easing = FastOutSlowInEasing), label = "menu_background_$id"
+    )
+    val tint by animateColorAsState(if (active) p.primary else p.text.copy(alpha = .4f), tween(180), label = "menu_tint_$id")
+    val scale by animateFloatAsState(if (pressed) .94f else if (tapFlash) .985f else 1f,
+        if (pressed) tween(80) else spring(dampingRatio = .7f, stiffness = 700f), label = "menu_scale_$id")
+    Box(modifier.testTag("tab_$id").semantics { selected = active; role = Role.Tab }
+        .clip(RoundedCornerShape(percent = 50)).clickable(interactionSource = interaction, indication = null) { tapSequence++; onClick() }, contentAlignment = Alignment.Center) {
+        Column(Modifier.fillMaxSize().scale(scale).clip(RoundedCornerShape(percent = 50)).background(background),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)) {
+            Glyph(icon, null, tint, 20)
+            Text(label, fontSize = 10.sp, letterSpacing = .7.sp, fontWeight = FontWeight.Bold, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+@Composable private fun LeasingPlaceholder() {
+    val p = LocalPalette.current
+    Glass(Modifier.fillMaxWidth().testTag("leasing_placeholder"), padding = 28) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.size(80.dp).background(p.primary.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_car_front, null, p.primary, 40) }
+            Text("Лизинг", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = p.text)
+            Text("Калькулятор лизинга будет добавлен позже.", color = p.muted, textAlign = TextAlign.Center, fontSize = 14.sp)
         }
     }
 }
@@ -537,10 +586,10 @@ private val NumberGrouping = VisualTransformation { input ->
     val p = LocalPalette.current
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     Row(Modifier.fillMaxWidth().background(p.field, RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).padding(4.dp)) {
-        listOf("loan" to "Кредиты", "deposit" to "Депозиты").forEach { (key, label) ->
-            val count = history.count { it.result.isLoan == (key == "loan") }
+        listOf("deposit" to "Депозит", "loan" to "Кредит", "leasing" to "Лизинг").forEach { (key, label) ->
+            val count = history.count { it.type == key }
             val active = filter == key
-            Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (active) p.primary else Color.Transparent).selectableCompat(active) { filter = if (active) null else key }.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).testTag("history_filter_$key").clip(RoundedCornerShape(8.dp)).background(if (active) p.primary else Color.Transparent).selectableCompat(active) { filter = if (active) null else key }.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (active) Color.White else p.muted)
                 if (count > 0) Box(Modifier.background(if (active) Color.Black.copy(alpha = .1f) else p.primary.copy(alpha = .1f), RoundedCornerShape(8.dp)).border(1.dp, p.primary.copy(alpha = .2f), RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
                     Text(count.toString(), color = if (active) Color.White else p.primary, fontSize = 10.sp)
@@ -548,7 +597,7 @@ private val NumberGrouping = VisualTransformation { input ->
             }
         }
     }
-    val entries = history.filter { filter == null || it.result.isLoan == (filter == "loan") }.sortedByDescending { it.timestamp }
+    val entries = history.filter { filter == null || it.type == filter }.sortedByDescending { it.timestamp }
     if (entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Box(Modifier.size(80.dp).background(p.field, CircleShape), contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_bookmark, null, p.muted.copy(alpha = .4f), 40) }
         Text("История расчетов пуста", color = p.muted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -557,7 +606,7 @@ private val NumberGrouping = VisualTransformation { input ->
         entries.forEach { entry -> key(entry.id) {
             val c = entry.result
             val accent = if (c.isLoan) Color(0xFFF43F5E) else Color(0xFF10B981)
-            Glass(Modifier.drawWithContent {
+            Glass(Modifier.testTag("history_entry_${entry.type}").drawWithContent {
                 drawContent()
                 val path = Path().apply { addOutline(RoundedCornerShape(16.dp).createOutline(size, layoutDirection, this@drawWithContent)) }
                 drawContext.canvas.save(); drawContext.canvas.clipPath(path)

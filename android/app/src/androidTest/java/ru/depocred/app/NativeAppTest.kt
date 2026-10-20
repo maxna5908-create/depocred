@@ -161,6 +161,8 @@ class NativeAppTest {
         // InputConnection/IME and Surface transactions finish outside Compose's test clock.
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         android.os.SystemClock.sleep(400)
+        // Tap-feedback timers can schedule a final Compose frame during the wait.
+        rule.waitForIdle()
         val directory = File(rule.activity.filesDir, "qa").apply { mkdirs() }
         // Capture the physical display so Dialog windows, their dimming and fixed
         // headers are included; a Compose root can belong to the underlying Activity.
@@ -324,6 +326,72 @@ class NativeAppTest {
         // One realistic PDF of each calculator is retained for external extraction/render QA.
         PdfReport.create(rule.activity, SavedCalculation(mode = "direct", result = Finance.loan(LoanInput(750000.0, 12.0, 60, 2500.0, 1.5))), "emerald").copyTo(File(rule.activity.filesDir, "qa/loan-sample.pdf"), overwrite = true)
         PdfReport.create(rule.activity, SavedCalculation(mode = "reverse", result = Finance.deposit(DepositInput(250000.0, 13.5, 37, 7500.0, "weekly", "quarterly"))), "violet").copyTo(File(rule.activity.filesDir, "qa/deposit-sample.pdf"), overwrite = true)
+    }
+    @Test fun fiveMenuTabsAndThreeHistoryFiltersPreserveCalculationsAndPreferences() {
+        val freshDirectory = File(rule.activity.cacheDir, "fresh-defaults-${System.nanoTime()}").apply { mkdirs() }
+        val fresh = LocalStore(freshDirectory).read()
+        assertEquals("light", fresh.settings.theme)
+        assertEquals("amber", fresh.settings.skin)
+        val legacy = StateJson.decode(StateJson.encode(UiState(settings = Settings("dark", "emerald"))))
+        assertEquals("dark", legacy.settings.theme)
+        assertEquals("emerald", legacy.settings.skin)
+        val sections = listOf("deposit", "loan", "leasing", "history", "info")
+        val menuBounds = sections.map { rule.onNodeWithTag("tab_$it").assertIsDisplayed().fetchSemanticsNode().boundsInRoot }
+        assertTrue(menuBounds.zipWithNext().all { (left, right) -> left.right <= right.left + 1 })
+        screenshot("31-five-section-menu-orange")
+        rule.onNodeWithTag("tab_deposit").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(100)
+        screenshot("32-menu-pressed")
+        rule.onNodeWithTag("tab_deposit").performTouchInput { up() }
+        rule.onNodeWithTag("tab_deposit").assertIsSelected()
+        rule.onNodeWithTag("tab_loan").performClick()
+        field("amount", "100000"); field("rate", "10"); field("term", "12"); calculate()
+        val resultId = model.state.current!!.id
+        rule.onNodeWithTag("tab_loan").performClick()
+        rule.runOnIdle { assertEquals(resultId, model.state.current?.id); model.saveCurrent(); model.clearNotice() }
+        rule.onNodeWithTag("tab_deposit").performClick()
+        field("amount", "200000"); field("rate", "12"); field("term", "12"); calculate()
+        rule.runOnIdle { model.saveCurrent(); model.clearNotice() }
+        rule.onNodeWithTag("tab_leasing").performClick()
+        rule.onNodeWithTag("leasing_placeholder").assertIsDisplayed()
+        rule.onNodeWithTag("calculate").assertDoesNotExist()
+        screenshot("33-leasing-placeholder")
+        rule.activityRule.scenario.recreate()
+        rule.onNodeWithTag("tab_leasing").assertIsSelected()
+        rule.onNodeWithTag("leasing_placeholder").assertIsDisplayed()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithTag("tab_history").performClick()
+        rule.mainClock.advanceTimeBy(96)
+        screenshot("38-menu-transition-100ms")
+        rule.mainClock.advanceTimeBy(320)
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        rule.onNodeWithTag("tab_history").assertIsSelected()
+        rule.runOnIdle { assertEquals(2, model.state.history.size) }
+        rule.onNodeWithTag("history_entry_deposit").assertExists()
+        rule.onNodeWithTag("history_entry_loan").assertExists()
+        val filters = listOf("deposit", "loan", "leasing").map { rule.onNodeWithTag("history_filter_$it").fetchSemanticsNode().boundsInRoot }
+        assertTrue(filters.zipWithNext().all { (left, right) -> left.right <= right.left + 1 })
+        rule.onNodeWithTag("history_filter_deposit").performClick().assertIsSelected()
+        rule.onNodeWithTag("history_entry_deposit").assertExists()
+        rule.onNodeWithTag("history_entry_loan").assertDoesNotExist()
+        screenshot("34-history-deposit")
+        rule.onNodeWithTag("history_filter_loan").performClick().assertIsSelected()
+        rule.onNodeWithTag("history_entry_loan").assertExists()
+        rule.onNodeWithTag("history_entry_deposit").assertDoesNotExist()
+        screenshot("35-history-loan")
+        rule.onNodeWithTag("history_filter_leasing").performClick().assertIsSelected()
+        rule.onNodeWithTag("history_entry_loan").assertDoesNotExist()
+        rule.onNodeWithTag("history_entry_deposit").assertDoesNotExist()
+        rule.onNodeWithText("История расчетов пуста").assertExists()
+        screenshot("36-history-leasing")
+        rule.activityRule.scenario.recreate()
+        rule.onNodeWithTag("history_filter_leasing").assertIsSelected()
+        rule.onNodeWithTag("history_filter_leasing").performClick()
+        rule.onNodeWithTag("history_entry_deposit").assertExists()
+        rule.onNodeWithTag("history_entry_loan").assertExists()
+        rule.runOnIdle { model.settings(Settings("dark", "violet")) }
+        screenshot("37-menu-dark-violet")
     }
     @Test fun settingsAndLocalStoreSurviveReload() {
         rule.onNodeWithTag("tab_info").performClick()

@@ -3,7 +3,7 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:colorAccent">#10B981</item>
+        <item name="android:colorAccent">@color/startup_orange</item>
         <item name="android:windowBackground">@color/startup_orange</item>
         <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
     </style>

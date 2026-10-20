@@ -2,7 +2,7 @@
 import { writeFile, mkdir, copyFile } from 'node:fs/promises';
 const directory = new URL('../android/app/src/main/res/drawable/', import.meta.url);
 await mkdir(directory, { recursive: true });
-const icons = ['coins', 'credit-card', 'piggy-bank', 'bookmark', 'info', 'calculator', 'trash-2', 'save', 'share-2', 'arrow-up', 'arrow-left', 'download', 'sun', 'moon', 'mail', 'globe', 'star', 'shield', 'sparkles', 'smartphone', 'x', 'check'];
+const icons = ['coins', 'car-front', 'credit-card', 'piggy-bank', 'bookmark', 'info', 'calculator', 'trash-2', 'save', 'share-2', 'arrow-up', 'arrow-left', 'download', 'sun', 'moon', 'mail', 'globe', 'star', 'shield', 'sparkles', 'smartphone', 'x', 'check'];
 for (const name of icons) {
   const { __iconNode: nodes } = await import(`../node_modules/lucide-react/dist/esm/icons/${name}.js`);
   const paths = nodes.map(([type, a]) => {

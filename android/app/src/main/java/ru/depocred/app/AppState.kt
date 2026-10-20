@@ -13,7 +13,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-data class Settings(val theme: String = "light", val skin: String = "emerald", val hints: Boolean = true)
+data class Settings(val theme: String = "light", val skin: String = "amber", val hints: Boolean = true)
 data class Form(
     val fields: Map<String, String> = emptyMap(), val target: String? = null,
     val manual: List<String> = emptyList(), val autoError: String? = null
@@ -25,7 +25,9 @@ data class Form(
     fun with(key: String, value: String) = copy(fields = fields + (key to value))
 }
 fun emptyForm(loan: Boolean, reverse: Boolean) = Form(if (loan) mapOf("paymentType" to if (reverse) "" else "annuity") else mapOf("cap" to "monthly", "period" to "none"))
-data class SavedCalculation(val id: String = UUID.randomUUID().toString(), val timestamp: Long = System.currentTimeMillis(), val mode: String, val result: Calculation)
+data class SavedCalculation(val id: String = UUID.randomUUID().toString(), val timestamp: Long = System.currentTimeMillis(), val mode: String, val result: Calculation) {
+    val type get() = if (result.isLoan) "loan" else "deposit"
+}
 data class InputFocusRequest(val formKey: String, val field: String, val sequence: Long)
 data class UiState(
     val tab: String = "loan", val settings: Settings = Settings(),
@@ -34,7 +36,7 @@ data class UiState(
     val current: SavedCalculation? = null, val history: List<SavedCalculation> = emptyList(),
     val calculating: Boolean = false, val resultRevision: Int = 0
 ) {
-    val reverse get() = if (tab == "loan") loanReverse else depositReverse
+    val reverse get() = when (tab) { "loan" -> loanReverse; "deposit" -> depositReverse; else -> false }
     val formKey get() = tab + if (reverse) "Reverse" else ""
     val form get() = forms[formKey] ?: emptyForm(tab == "loan", reverse)
 }
@@ -90,8 +92,8 @@ object StateJson {
         } }
         val h = j.getJSONArray("history")
         val entries = (0 until minOf(h.length(), 10)).map { entry(h.getJSONObject(it)) }
-        return UiState(tab = j.optString("tab").takeIf { it in listOf("loan", "deposit", "history", "info") } ?: "loan",
-            settings = Settings(s.optString("theme", "light"), s.optString("skin", "emerald"), s.optBoolean("hints", true)),
+        return UiState(tab = j.optString("tab").takeIf { it in listOf("deposit", "loan", "leasing", "history", "info") } ?: "loan",
+            settings = Settings(s.optString("theme", "light"), s.optString("skin", "amber"), s.optBoolean("hints", true)),
             loanReverse = j.optBoolean("loanReverse"), depositReverse = j.optBoolean("depositReverse"), forms = forms,
             current = j.optJSONObject("current")?.let(::entry), history = entries)
     }
@@ -148,6 +150,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { store.write(StateJson.encode(state)) }.onFailure { notify("Не удалось сохранить последние изменения") }
     }
     fun tab(value: String) {
+        if (value == state.tab || value !in listOf("deposit", "loan", "leasing", "history", "info")) return
         calculationJob?.cancel()
         state = state.copy(tab = value, current = null, calculating = false)
         persist()
