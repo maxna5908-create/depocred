@@ -1,0 +1,582 @@
+{
+  "source": "Unchanged DepositCalculator.tsx solvers/useEffect",
+  "fixtures": [
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount",
+          "rate"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682
+        },
+        "manual": [
+          "amount",
+          "rate",
+          "term"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 0
+        },
+        "manual": [
+          "rate",
+          "term",
+          "final"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "120000",
+        "expected": {
+          "amount": 106494,
+          "rate": 12,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "rate",
+          "term",
+          "final"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "15",
+        "expected": {
+          "amount": 103381,
+          "rate": 15,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "term",
+          "final",
+          "rate"
+        ]
+      },
+      {
+        "key": "amount",
+        "text": "",
+        "expected": {
+          "amount": 0,
+          "rate": 15,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "final",
+          "rate",
+          "amount"
+        ]
+      },
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 15,
+          "term": 14,
+          "final": 120000
+        },
+        "manual": [
+          "final",
+          "rate",
+          "amount"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount",
+          "rate"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682
+        },
+        "manual": [
+          "amount",
+          "rate",
+          "term"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 12,
+          "final": 112682
+        },
+        "manual": [
+          "amount",
+          "term",
+          "rate"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "120000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "term",
+          "rate",
+          "final"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "rate",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "final",
+          "term",
+          "amount"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "120000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "period",
+        "text": "monthly",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "addition",
+        "text": "1000",
+        "expected": {
+          "amount": 100000,
+          "rate": 7.27,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "cap",
+        "text": "daily",
+        "expected": {
+          "amount": 100000,
+          "rate": 7.25,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "period",
+        "text": "none",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.24,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "120000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "final",
+          "term"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "1",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 1
+        },
+        "manual": [
+          "amount",
+          "term",
+          "final"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "120000",
+        "expected": {
+          "amount": 100000,
+          "rate": 18.37,
+          "term": 12,
+          "final": 120000
+        },
+        "manual": [
+          "amount",
+          "term",
+          "final"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "rate",
+        "text": "12",
+        "expected": {
+          "amount": 0,
+          "rate": 12,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "rate"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 0,
+          "rate": 12,
+          "term": 12,
+          "final": 0
+        },
+        "manual": [
+          "rate",
+          "term"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "112682.44",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682.44
+        },
+        "manual": [
+          "rate",
+          "term",
+          "final"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 12,
+          "final": 0
+        },
+        "manual": [
+          "amount",
+          "term"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "112682.44",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682.44
+        },
+        "manual": [
+          "amount",
+          "term",
+          "final"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount",
+          "rate"
+        ]
+      },
+      {
+        "key": "final",
+        "text": "112682.44",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682.44
+        },
+        "manual": [
+          "amount",
+          "rate",
+          "final"
+        ]
+      }
+    ],
+    [
+      {
+        "key": "amount",
+        "text": "100000",
+        "expected": {
+          "amount": 100000,
+          "rate": 0,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount"
+        ]
+      },
+      {
+        "key": "rate",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 0,
+          "final": 0
+        },
+        "manual": [
+          "amount",
+          "rate"
+        ]
+      },
+      {
+        "key": "term",
+        "text": "12",
+        "expected": {
+          "amount": 100000,
+          "rate": 12,
+          "term": 12,
+          "final": 112682
+        },
+        "manual": [
+          "amount",
+          "rate",
+          "term"
+        ]
+      }
+    ]
+  ]
+}

@@ -7,10 +7,25 @@ class ReverseFormsTest {
     private fun edit(form: Form, key: String, value: String) = ReverseForms.deposit(form.with(key, value), key)
     private fun deposit() = edit(edit(edit(emptyForm(false, true), "amount", "100000"), "rate", "12"), "term", "12")
 
+    @Test fun fieldTransitionsMatchTheUnchangedPwaEffect() {
+        val fixtures = org.json.JSONObject(javaClass.getResource("/pwa-reverse-forms.json")!!.readText()).getJSONArray("fixtures")
+        for (i in 0 until fixtures.length()) {
+            var form = emptyForm(false, true)
+            val steps = fixtures.getJSONArray(i)
+            for (j in 0 until steps.length()) {
+                val step = steps.getJSONObject(j)
+                form = edit(form, step.getString("key"), step.getString("text"))
+                val expected = step.getJSONObject("expected")
+                for (key in listOf("amount", "rate", "term", "final")) assertEquals("sequence $i step $j field $key", expected.getDouble(key), form.number(key), if (key == "rate") .011 else if (key == "term") .0 else 1.0)
+                val manual = step.getJSONArray("manual")
+                assertEquals((0 until manual.length()).map { manual.getString(it) }, form.manual)
+            }
+        }
+    }
     @Test fun clearingDepositInputsPreservesOtherValuesAndAllowsTyping() {
         val original = deposit()
         assertEquals("final", original.target)
-        assertEquals(112683.0, original.number("final"), 0.0)
+        assertEquals(112682.0, original.number("final"), 0.0)
         for (key in listOf("amount", "final", "rate", "term")) {
             val cleared = edit(original, key, "")
             assertEquals("", cleared.text(key))
@@ -31,7 +46,7 @@ class ReverseFormsTest {
         assertEquals(18.37, changedAmount.number("rate"), .1)
     }
     @Test fun allDepositUnknownsAndOrderChangesRemainEditable() {
-        val values = linkedMapOf("amount" to "100000", "final" to "112682.5", "rate" to "12", "term" to "12")
+        val values = linkedMapOf("amount" to "100000", "final" to "112682.44", "rate" to "12", "term" to "12")
         for (unknown in values.keys) {
             var form = emptyForm(false, true)
             values.filterKeys { it != unknown }.forEach { (key, value) -> form = edit(form, key, value) }
