@@ -1,6 +1,7 @@
 package ru.depocred.app
 
 import kotlin.math.abs
+import kotlin.math.floor
 
 /** Field ownership follows the PWA: loan 2-of-3, deposit the last 3 manual edits. */
 internal object ReverseForms {
@@ -35,8 +36,30 @@ internal object ReverseForms {
         // Partial edits may temporarily describe an impossible deposit. Preserve them;
         // final validation belongs to Calculate, rather than replacing another input.
         if ((target == "rate" || target == "term") && next.number("final") <= next.number("amount")) return next
-        val value = runCatching { Finance.depositMissing(next.deposit(), next.number("final"), target) }.getOrNull() ?: return next
+        val value = runCatching { depositParameter(next, target) }.getOrNull() ?: return next
         val tolerance = if (target == "rate") .005 else .5
         return if (value > 0 && abs(value - next.number(target)) > tolerance) next.with(target, numberText(value)) else next
+    }
+
+    // The form uses the PWA's search and rounding rules. In particular, its term
+    // picker rounds the search midpoint; rounding up to the first reaching month
+    // can change the displayed term by a month during otherwise identical edits.
+    private fun depositParameter(form: Form, field: String): Double {
+        val input = form.deposit()
+        val target = form.number("final")
+        if (field == "final") return floor(Finance.deposit(input).finalAmount + .5)
+        var low = if (field == "term") 1.0 else 0.0
+        var high = when (field) { "term" -> 600.0; "rate" -> 1000.0; else -> target }
+        var mid = 0.0
+        repeat(40) {
+            mid = (low + high) / 2
+            val sample = when (field) {
+                "term" -> input.copy(term = floor(mid + .5).toInt())
+                "rate" -> input.copy(rate = mid)
+                else -> input.copy(initialAmount = mid)
+            }
+            if (Finance.deposit(sample).finalAmount < target) low = mid else high = mid
+        }
+        return if (field == "rate") floor(mid * 100 + .5) / 100 else floor(mid + .5)
     }
 }
