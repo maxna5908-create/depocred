@@ -78,6 +78,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,18 +118,26 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             val backdrop = rememberGraphicsLayer()
             var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
             val focus = LocalFocusManager.current
-            var resultY by remember { mutableIntStateOf(0) }
+            var resultY by remember(state.tab, state.formKey, state.current?.id) { mutableIntStateOf(-1) }
             val density = LocalDensity.current
-            val keyboard = WindowInsets.ime.getBottom(density) > 0
+            val ime = WindowInsets.ime
+            val keyboard = ime.getBottom(density) > 0
             LaunchedEffect(Unit) { delay(1800); splash = false }
-            LaunchedEffect(state.resultRevision) {
-                if (state.current != null) { delay(150); scroll.animateScrollTo(resultY) }
+            LaunchedEffect(state.tab, state.formKey, state.current?.id, state.resultRevision) {
+                if (state.current != null) {
+                    // Wait for the actual result layout and keyboard resize, not a timer.
+                    // Leaving a form cancels this navigation; result tab switches keep its id.
+                    snapshotFlow { resultY }.first { it >= 0 }
+                    snapshotFlow { ime.getBottom(density) }.first { it == 0 }
+                    withFrameNanos { }
+                    scroll.animateScrollTo(resultY.coerceIn(0, scroll.maxValue))
+                }
             }
             LaunchedEffect(model.notice) { if (model.notice != null) { delay(3500); model.clearNotice() } }
             BackHandler(enabled = !splash && state.tab != "loan" && selected == null) { model.tab("loan") }
             Box(Modifier.fillMaxSize().background(palette.background)) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 800.dp).fillMaxSize().onGloballyPositioned { backdropOrigin = it.positionInRoot() }.drawWithContent {
+                    Column(Modifier.widthIn(max = 800.dp).fillMaxSize().clipToBounds().onGloballyPositioned { backdropOrigin = it.positionInRoot() }.drawWithContent {
                         backdrop.record { drawRect(palette.background); this@drawWithContent.drawContent() }
                         drawLayer(backdrop)
                     }) {
@@ -358,10 +367,10 @@ private val NumberGrouping = VisualTransformation { input ->
     }
     val navigation = FormNavigation(order, requesters, bringIntoView, scope, keyboard)
     val requested = model.inputFocusRequest
-    LaunchedEffect(requested) {
+    LaunchedEffect(requested, state.formKey) {
         if (requested != null && requested.formKey == state.formKey) {
-            navigation.focus(requested.field)
-            model.consumeInputFocus(requested.sequence)
+            try { navigation.focusAndReveal(requested.field) }
+            finally { model.consumeInputFocus(requested.sequence) }
         }
     }
     CompositionLocalProvider(LocalFormNavigation provides navigation) {

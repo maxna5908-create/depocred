@@ -69,13 +69,14 @@ internal class FormNavigation(
 ) {
     fun next(field: String): String? = order.indexOf(field).takeIf { it >= 0 }?.let { order.getOrNull(it + 1) }
     fun focus(field: String) {
-        scope.launch {
-            requesters[field]?.requestFocus()
-            // Let the new field establish its InputConnection before asking the IME to show.
-            withFrameNanos { }
-            if (field == "paymentType") keyboard?.hide() else keyboard?.show()
-            bringIntoView[field]?.bringIntoView()
-        }
+        scope.launch { focusAndReveal(field) }
+    }
+    suspend fun focusAndReveal(field: String) {
+        requesters[field]?.requestFocus()
+        // Let the new field establish its InputConnection before asking the IME to show.
+        withFrameNanos { }
+        if (field == "paymentType") keyboard?.hide() else keyboard?.show()
+        bringIntoView[field]?.bringIntoView()
     }
 }
 internal val LocalFormNavigation = staticCompositionLocalOf<FormNavigation?> { null }

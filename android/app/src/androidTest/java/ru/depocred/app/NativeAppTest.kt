@@ -63,9 +63,15 @@ class NativeAppTest {
         }
     }
 
+    private fun focused(key: String) {
+        rule.waitUntil(10000) {
+            rule.onAllNodesWithTag("field_$key").fetchSemanticsNodes().any { it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) { false } }
+        }
+        rule.onNodeWithTag("field_$key").assertIsFocused().assertIsDisplayed()
+    }
     private fun next(from: String, to: String) {
         rule.onNodeWithTag("field_$from").assert(hasImeAction(ImeAction.Next)).performImeAction()
-        rule.onNodeWithTag("field_$to").assertIsFocused().assertIsDisplayed()
+        focused(to)
         keyboard(true)
         rule.waitUntil(5000) {
             val node = rule.onNodeWithTag("field_$to").fetchSemanticsNode()
@@ -114,16 +120,16 @@ class NativeAppTest {
     @Test fun missingInputsShowNoticeAndFocusTheRequiredField() {
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
         rule.onNodeWithText("Укажите сумму для расчёта").assertExists()
-        rule.onNodeWithTag("field_amount").assertIsFocused().assertIsDisplayed()
+        focused("amount")
         keyboard(true)
         screenshot("20-required-amount")
         rule.onNodeWithTag("field_amount").performTextReplacement("1000000")
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
-        rule.onNodeWithTag("field_rate").assertIsFocused().assertIsDisplayed()
+        focused("rate")
         keyboard(true)
         rule.onNodeWithTag("field_rate").performTextReplacement("0")
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
-        rule.onNodeWithTag("field_term").assertIsFocused().assertIsDisplayed()
+        focused("term")
         keyboard(true)
         rule.onNodeWithTag("field_term").performTextReplacement("12")
         calculate(); keyboard(false)
@@ -131,7 +137,7 @@ class NativeAppTest {
         rule.onNodeWithTag("tab_deposit").performClick()
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
         rule.onNodeWithTag("calculate").performScrollTo().performClick()
-        rule.onNodeWithTag("field_amount").assertIsFocused().assertIsDisplayed()
+        focused("amount")
         keyboard(true)
     }
     private fun screenshot(name: String) {
@@ -211,9 +217,11 @@ class NativeAppTest {
     @Test fun resultTabsKeepTheCardMountedAndTheScrollPositionStable() {
         field("amount", "150000"); field("rate", "16.8"); field("term", "28")
         calculate()
-        rule.onNodeWithText("Аннуитетный").performScrollTo().assertIsDisplayed()
-        rule.waitForIdle()
         fun scrollValue() = rule.onNodeWithTag("content").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+        // Finish Calculate's initial navigation before measuring tab-switch movement.
+        rule.waitUntil(10000) { scrollValue() > 0 }
+        rule.waitForIdle()
+        rule.onNodeWithText("Аннуитетный").assertIsDisplayed()
         val revision = model.state.resultRevision
         for (type in listOf("differentiated", "annuity", "differentiated", "annuity")) {
             val before = scrollValue()
@@ -236,7 +244,7 @@ class NativeAppTest {
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
         rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
         rule.onNodeWithTag("field_term").assertDoesNotExist()
-        rule.onNodeWithTag("field_amount").assertIsFocused()
+        focused("amount")
         field("amount", "100000")
         rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
         field("term", "12"); field("payment", "10000")
