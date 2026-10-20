@@ -19,14 +19,14 @@ object PdfReport {
         val directory = File(context.cacheDir, "reports").apply { check(mkdirs() || isDirectory) }
         val now = System.currentTimeMillis()
         directory.listFiles()?.filter { now - it.lastModified() > 7 * 86_400_000L }?.forEach { it.delete() }
-        val type = if (entry.result.isLoan) "Loan" else "Deposit"
+        val type = if (entry.result.isLoan) "Loan" else if (entry.result.isLeasing) "Leasing" else "Deposit"
         val date = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date(now))
         val file = File(directory, "${type}_${entry.mode}_${date}_${entry.id.take(8)}.pdf")
         val temporary = File(directory, "${file.name}.${System.nanoTime()}.tmp")
         val font = ResourcesCompat.getFont(context, R.font.inter) ?: Typeface.create("sans-serif", Typeface.NORMAL)
         val color = when (skin) { "blue" -> Color.rgb(59,130,246); "amber" -> Color.rgb(245,158,11); "rose" -> Color.rgb(244,63,94); "violet" -> Color.rgb(139,92,246); else -> Color.rgb(16,185,129) }
         try {
-            Writer(font, color).write(entry.result, temporary)
+            Writer(font, color).write(entry.result, temporary, entry.mode)
             check(temporary.renameTo(file)) { "Не удалось завершить PDF" }
             return file
         } catch (e: Exception) { temporary.delete(); throw e }
@@ -54,7 +54,7 @@ object PdfReport {
             y = 38f
         }
         private fun finishPage(p: PdfDocument.Page) {
-            text("DepoCred — финансовый калькулятор кредитов и вкладов", margin, 812f, 8f, muted)
+            text("DepoCred — депозиты, кредиты и лизинг", margin, 812f, 8f, muted)
             text("Стр. $pageNumber", width - margin, 812f, 8f, muted, right = true)
             document.finishPage(p)
         }
@@ -88,9 +88,14 @@ object PdfReport {
             right.forEachIndexed { i, s -> text(s, width - margin, y + i * 14f, 10f, right = true) }
             y += height
         }
-        fun write(c: Calculation, file: File) {
+        fun write(c: Calculation, file: File, mode: String) {
             try {
                 newPage()
+                if (c.isLeasing) {
+                    leasing(c, mode)
+                    complete(file)
+                    return
+                }
                 text(if (c.isLoan) "Расчет по кредиту" else "Расчет по депозиту", margin, y + 8f, 22f, bold = true)
                 y += 28f
                 paint.color = primary; paint.strokeWidth = 2f
@@ -160,9 +165,68 @@ object PdfReport {
                 y += 18f
                 val note = "Информационный расчет. Принята база 365 дней; пополнения — в начале выбранного месяца. Условия, календарь и округление банка могут отличаться."
                 lines(note, usable, 8f).forEach { line -> ensure(12f); text(line, margin, y, 8f, muted); y += 12f }
-                page?.let(::finishPage); page = null
-                FileOutputStream(file).use { output -> document.writeTo(output); output.fd.sync() }
+                complete(file)
             } finally { document.close() }
+        }
+        private fun complete(file: File) {
+            page?.let(::finishPage); page = null
+            FileOutputStream(file).use { output -> document.writeTo(output); output.fd.sync() }
+        }
+        private fun leasing(c: Calculation, mode: String) {
+            val i = c.leasing!!
+            text("Расчёт лизинга", margin, y + 8, 22f, bold = true)
+            y += 36f
+            heading(if (mode == "reverse") "Обратный расчёт" else "Прямой расчёт")
+            pair("Стоимость предмета с НДС", leaseMoney(i.amount))
+            pair("Аванс", "${leaseMoney(i.advanceAmount)} (${percent(i.advanceAmount / i.amount * 100)})")
+            pair("Сумма финансирования", leaseMoney(i.financed))
+            pair("Отдельные расходы в начале", leaseMoney(i.expenses))
+            pair("Первый платёж через", "${i.firstMonth} мес.")
+            pair("Регулярных платежей / последний месяц", "${i.count} / ${i.maturity} мес.")
+            pair("Выкупной платёж", leaseMoney(i.buyout))
+            if (i.buyout > 0) pair("Момент выкупа", LEASE_TIMINGS.first { it.first == i.buyoutTiming }.second)
+            if (mode != "reverse") {
+                pair("График", LEASE_TYPES.first { it.first == i.paymentType }.second)
+                pair("Ставка финансирования", percent(i.rate))
+                if (i.paymentType != "annuity") pair("НДС на проценты финансирования", percent(i.vatRate))
+            } else i.groups.forEachIndexed { index, g -> pair("Группа ${index + 1}", "${g.count} × ${leaseMoney(g.payment)}") }
+            y += 12f
+            heading("Результаты расчёта")
+            pair("Эквивалент кредита: номинальная годовая", percent(c.nominalRate))
+            pair("Эффективная годовая ставка", percent(c.effectiveRate))
+            pair("Всего с авансом и расходами", leaseMoney(c.totalRepayment))
+            pair("Переплата к стоимости предмета", leaseMoney(c.totalInterest))
+            y += 12f
+            val note = "Расчёт по месячным денежным потокам с НДС, без налоговых вычетов. Аванс и отдельные расходы оплачиваются в момент 0. Ставка r уравнивает финансирование за вычетом расходов и приведённые платежи. Номинальная годовая = r × 12; эффективная = (1 + r)^12 − 1. Фактические даты финансирования и платежей могут изменить ставку."
+            lines(note, usable, 9f).forEach { line -> ensure(14f); text(line, margin, y, 9f, muted); y += 14f }
+            y += 20f
+            ensure(80f)
+            heading("Платежи по месяцам")
+            fun header() {
+                ensure(28f)
+                paint.color = primary
+                canvas.drawRect(margin, y, width - margin, y + 26, paint)
+                text("Месяц", margin + 8, y + 17, 9f, Color.WHITE, true)
+                text("Состав платежа", margin + 66, y + 17, 9f, Color.WHITE, true)
+                text("Сумма с НДС", width - margin - 8, y + 17, 9f, Color.WHITE, true, true)
+                y += 26
+            }
+            header()
+            fun row(month: Int, label: String, payment: Double) {
+                if (y + 25 > bottom) { newPage(); header() }
+                if (month % 2 == 0) { paint.color = Color.rgb(241,245,249); canvas.drawRect(margin,y,width-margin,y+24,paint) }
+                text(month.toString(), margin + 8, y + 16, 9f)
+                text(label, margin + 66, y + 16, 9f, muted)
+                text(leaseMoney(payment), width - margin - 8, y + 16, 9f, right = true)
+                y += 24
+            }
+            row(0, "Аванс и отдельные расходы", i.advanceAmount + i.expenses)
+            c.rows.forEach { r ->
+                val label = if (i.buyout > 0 && r.month == i.maturity) {
+                    if (i.buyoutTiming == "next") "Выкуп" else "Платёж и выкуп"
+                } else if (r.month < i.firstMonth) "Отсрочка" else "Регулярный платёж"
+                row(r.month, label, r.payment)
+            }
         }
     }
 }

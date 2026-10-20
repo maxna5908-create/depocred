@@ -25,9 +25,12 @@ data class Calculation(
     val rows: List<ScheduleRow>, val totalInterest: Double,
     val totalCommission: Double = 0.0, val totalRepayment: Double = 0.0,
     val amountReceived: Double = 0.0, val effectiveRate: Double = 0.0,
-    val finalAmount: Double = 0.0, val totalAdditions: Double = 0.0
+    val finalAmount: Double = 0.0, val totalAdditions: Double = 0.0,
+    val leasing: LeasingInput? = null, val nominalRate: Double = 0.0
 ) {
     val isLoan get() = loan != null
+    val isLeasing get() = leasing != null
+    val type get() = if (isLoan) "loan" else if (isLeasing) "leasing" else "deposit"
     val firstPayment get() = rows.firstOrNull()?.payment ?: 0.0
 }
 

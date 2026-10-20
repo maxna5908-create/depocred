@@ -165,21 +165,21 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                         AppHeader(state.tab)
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds().verticalScroll(scroll).testTag("content").padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (keyboard) 28.dp else 144.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             when (state.tab) {
-                                "loan", "deposit" -> {
-                                    CalculatorForm(state, model)
+                                "loan", "deposit", "leasing" -> {
+                                    if (state.tab == "leasing") LeasingForm(state, model) else CalculatorForm(state, model)
                                     if (state.current != null) {
                                         // Position relative to scroll content, independent of keyboard/screen size.
                                         Box(Modifier.testTag("calculation_result").onGloballyPositionedCompat { y -> resultY = y }) {
-                                            CalculationResult(state.current, state.form.text("paymentType"), model::paymentType,
+                                            if (state.current.result.isLeasing) LeasingResult(state.current, model::saveCurrent, { selectedId = state.current.id }, onExport)
+                                            else CalculationResult(state.current, state.form.text("paymentType"), model::paymentType,
                                                 onSave = model::saveCurrent, onSchedule = { selectedId = state.current.id }, onExport = onExport)
                                         }
                                         Column(Modifier.fillMaxWidth().clickable { scope.launch { scroll.animateScrollTo(0) } }.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Glyph(R.drawable.lucide_arrow_up, null, palette.muted, 32)
-                                            Text("К ПАРАМЕТРАМ ${if (state.tab == "loan") "КРЕДИТА" else "ДЕПОЗИТА"}", fontSize = 10.sp, color = palette.muted, modifier = Modifier.padding(top = 8.dp))
+                                            Text("К ПАРАМЕТРАМ ${when (state.tab) { "loan" -> "КРЕДИТА"; "leasing" -> "ЛИЗИНГА"; else -> "ДЕПОЗИТА" }}", fontSize = 10.sp, color = palette.muted, modifier = Modifier.padding(top = 8.dp))
                                         }
                                     }
                                 }
-                                "leasing" -> LeasingPlaceholder()
                                 "history" -> HistoryScreen(state.history, model::delete, { selectedId = it.id }, onExport)
                                 "info" -> InfoScreen(state.settings, model::settings, onLink, onShareApp)
                             }
@@ -199,7 +199,7 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                     Splash(Modifier.testTag("startup").semantics { stateDescription = if (splash) "Загрузка" else "Открытие приложения" }) { splash = false }
                 }
             }
-            selected?.let { ScheduleScreen(it, { selectedId = null }, onExport) }
+            selected?.let { if (it.result.isLeasing) LeasingSchedule(it, { selectedId = null }, onExport) else ScheduleScreen(it, { selectedId = null }, onExport) }
           }
         }
     }
@@ -324,16 +324,6 @@ private fun applyAppWindow(activity: android.app.Activity, view: android.view.Vi
         }
     }
 }
-@Composable private fun LeasingPlaceholder() {
-    val p = LocalPalette.current
-    Glass(Modifier.fillMaxWidth().testTag("leasing_placeholder"), padding = 28) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.size(80.dp).background(p.primary.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_car_front, null, p.primary, 40) }
-            Text("Лизинг", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = p.text)
-            Text("Калькулятор лизинга будет добавлен позже.", color = p.muted, textAlign = TextAlign.Center, fontSize = 14.sp)
-        }
-    }
-}
 private fun Modifier.selectableCompat(selected: Boolean, onClick: () -> Unit) = this.semantics { this.selected = selected; role = Role.Tab }.clickable(onClick = onClick)
 
 // CSS box-shadow excludes the interior. A translucent Material Surface with elevation
@@ -353,20 +343,20 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
         drawContent()
     }
 }
-@Composable private fun Glass(modifier: Modifier = Modifier, shape: RoundedCornerShape = RoundedCornerShape(16.dp), padding: Int = 24, gap: Int = 16, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun Glass(modifier: Modifier = Modifier, shape: RoundedCornerShape = RoundedCornerShape(16.dp), padding: Int = 24, gap: Int = 16, content: @Composable ColumnScope.() -> Unit) {
     val p = LocalPalette.current
     Column(modifier.fillMaxWidth().outsideShadow(shape, if (p.dark) .4f else .1f).background(p.glass, shape).border(1.dp, p.border, shape).padding(padding.dp), verticalArrangement = Arrangement.spacedBy(gap.dp), content = content)
 }
 @Composable internal fun Glyph(resource: Int, description: String?, tint: Color = LocalPalette.current.text, size: Int = 22) {
     Icon(painterResource(resource), contentDescription = description, tint = tint, modifier = Modifier.size(size.dp))
 }
-@Composable private fun SmallButton(icon: Int, description: String, onClick: () -> Unit) {
+@Composable internal fun SmallButton(icon: Int, description: String, onClick: () -> Unit) {
     val p = LocalPalette.current
     Surface(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).semantics { contentDescription = description; role = Role.Button }, shape = RoundedCornerShape(16.dp), color = p.field, border = BorderStroke(1.dp, p.border)) {
         Box(contentAlignment = Alignment.Center) { Glyph(icon, null) }
     }
 }
-@Composable private fun Action(text: String, modifier: Modifier = Modifier, icon: Int? = null, primary: Boolean = true, busy: Boolean = false, onClick: () -> Unit) {
+@Composable internal fun Action(text: String, modifier: Modifier = Modifier, icon: Int? = null, primary: Boolean = true, busy: Boolean = false, onClick: () -> Unit) {
     val p = LocalPalette.current
     Surface(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(16.dp)).clickable(enabled = !busy, onClick = onClick).semantics { role = Role.Button }, shape = RoundedCornerShape(16.dp), color = if (primary) p.primary else p.field, border = if (primary) null else BorderStroke(1.dp, p.border)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
@@ -377,7 +367,7 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
     }
 }
 @Composable private fun Label(text: String) { Text(text.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .7.sp, color = LocalPalette.current.muted, modifier = Modifier.padding(start = 4.dp)) }
-@Composable private fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false, onFocused: (() -> Unit)? = null) {
+@Composable internal fun Numeric(label: String, key: String, form: Form, onEdit: (String, String) -> Unit, modifier: Modifier = Modifier, suffix: String = "₽", integer: Boolean = false, enabled: Boolean = true, calculated: Boolean = false, lockCalculated: Boolean = false, onFocused: (() -> Unit)? = null) {
     val p = LocalPalette.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -535,17 +525,17 @@ private val NumberGrouping = VisualTransformation { input ->
     if (open) ChoiceDialog(if (label == "Пополнение") "Период пополнения" else "Частота капитализации", value, options, { open = false }) { onSelect(it); open = false }
 }
 
-@Composable private fun Metric(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: (() -> Unit)? = null) {
+@Composable internal fun Metric(label: String, value: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: (() -> Unit)? = null) {
     val p = LocalPalette.current
     Column(modifier.then(if (onClick != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).semantics { contentDescription = "Информация: $label"; role = Role.Button }.padding(vertical = 4.dp) else Modifier), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) { Text(label.uppercase(), fontSize = 9.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold, color = p.muted, letterSpacing = .4.sp, modifier = Modifier.weight(1f, fill = false)); if (onClick != null) { Spacer(Modifier.width(4.dp)); Glyph(R.drawable.lucide_info, null, p.primary, 12) } }
         Text(value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (accent) p.primary else p.text)
     }
 }
-@Composable private fun MetricPair(left: Pair<String, String>, right: Pair<String, String>, accent: Boolean = false) {
+@Composable internal fun MetricPair(left: Pair<String, String>, right: Pair<String, String>, accent: Boolean = false) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) { Metric(left.first, left.second, Modifier.weight(1f), accent); Metric(right.first, right.second, Modifier.weight(1f), accent) }
 }
-@Composable private fun Line() { HorizontalDivider(color = if (LocalPalette.current.dark) Color.White.copy(alpha = .1f) else Color.Black.copy(alpha = .05f)) }
+@Composable internal fun Line() { HorizontalDivider(color = if (LocalPalette.current.dark) Color.White.copy(alpha = .1f) else Color.Black.copy(alpha = .05f)) }
 
 @Composable private fun CalculationResult(entry: SavedCalculation, paymentType: String, onPaymentType: (String) -> Unit, onSave: (() -> Unit)? = null, onSchedule: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit, onDelete: (() -> Unit)? = null) {
     val p = LocalPalette.current
@@ -629,7 +619,7 @@ private val NumberGrouping = VisualTransformation { input ->
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         entries.forEach { entry -> key(entry.id) {
             val c = entry.result
-            val accent = if (c.isLoan) Color(0xFFF43F5E) else Color(0xFF10B981)
+            val accent = if (c.isLoan) Color(0xFFF43F5E) else if (c.isLeasing) p.primary else Color(0xFF10B981)
             Glass(Modifier.testTag("history_entry_${entry.type}").drawWithContent {
                 drawContent()
                 val path = Path().apply { addOutline(RoundedCornerShape(16.dp).createOutline(size, layoutDirection, this@drawWithContent)) }
@@ -638,14 +628,19 @@ private val NumberGrouping = VisualTransformation { input ->
             }, padding = 20) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(SimpleDateFormat("dd MMM yyyy - HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(entry.timestamp)).uppercase(), color = Color(0xFF94A3B8), fontSize = 10.sp, letterSpacing = .7.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Box(Modifier.background(accent, CircleShape).padding(horizontal = 8.dp, vertical = 3.dp)) { Text(if (c.isLoan) "КРЕДИТ" else "ДЕПОЗИТ", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    Box(Modifier.background(accent, CircleShape).padding(horizontal = 8.dp, vertical = 3.dp)) { Text(if (c.isLoan) "КРЕДИТ" else if (c.isLeasing) "ЛИЗИНГ" else "ДЕПОЗИТ", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("ИТОГОВАЯ СУММА", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = .5.sp)
-                    Text(money(if (c.isLoan) c.totalRepayment else c.finalAmount), fontSize = 30.sp, fontWeight = FontWeight.Black, color = p.text, letterSpacing = (-.8).sp)
+                    Text(if (c.isLeasing) leaseMoney(c.totalRepayment) else money(if (c.isLoan) c.totalRepayment else c.finalAmount), fontSize = 30.sp, fontWeight = FontWeight.Black, color = p.text, letterSpacing = (-.8).sp)
                 }
                 HorizontalDivider(color = accent.copy(alpha = .2f))
-                if (c.isLoan) {
+                if (c.isLeasing) {
+                    val l = c.leasing!!
+                    MetricPair("Предмет лизинга" to leaseMoney(l.amount), "Аванс" to leaseMoney(l.advanceAmount))
+                    MetricPair("Эквивалент кредита" to percent(c.nominalRate), "Эффективная ставка" to percent(c.effectiveRate), true)
+                    MetricPair("Срок / Выкуп" to "${l.maturity} мес. / ${leaseMoney(l.buyout)}", "Переплата" to leaseMoney(c.totalInterest))
+                } else if (c.isLoan) {
                     val l = c.loan!!
                     MetricPair("Кредит" to money(l.amount), "Ставка / Срок" to "${percent(l.rate)} | ${l.term} мес.")
                     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -661,9 +656,9 @@ private val NumberGrouping = VisualTransformation { input ->
                     }
                 }
                 HorizontalDivider(color = accent.copy(alpha = .2f))
-                Text(if (c.isLoan) "Переплата по кредиту составит ${percent(c.totalInterest / c.loan!!.amount * 100)} от первоначальной суммы." else "Доходность с учетом сложного процента составит ${percent(c.totalInterest / (c.deposit!!.initialAmount + c.totalAdditions) * 100)} за весь период.", color = accent, fontSize = 11.sp, lineHeight = 14.sp, fontStyle = FontStyle.Italic)
+                Text(if (c.isLeasing) "${if (entry.mode == "reverse") "Обратный" else "Прямой"} расчёт. Все суммы с НДС, без налоговых вычетов." else if (c.isLoan) "Переплата по кредиту составит ${percent(c.totalInterest / c.loan!!.amount * 100)} от первоначальной суммы." else "Доходность с учетом сложного процента составит ${percent(c.totalInterest / (c.deposit!!.initialAmount + c.totalAdditions) * 100)} за весь период.", color = accent, fontSize = 11.sp, lineHeight = 14.sp, fontStyle = FontStyle.Italic)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlineAction(if (c.isLoan) "График платежей" else "График начислений", Modifier.weight(1f)) { onSchedule(entry) }
+                    OutlineAction(if (c.isLeasing) "Платежи" else if (c.isLoan) "График платежей" else "График начислений", Modifier.weight(1f)) { onSchedule(entry) }
                     OutlineAction("Отправить PDF", icon = R.drawable.lucide_share_2) { onExport(entry, false) }
                     OutlineAction("Удалить расчёт", icon = R.drawable.lucide_trash_2) { onDelete(entry.id) }
                 }

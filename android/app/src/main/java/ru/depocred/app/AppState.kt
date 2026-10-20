@@ -26,23 +26,39 @@ data class Form(
 }
 fun emptyForm(loan: Boolean, reverse: Boolean) = Form(if (loan) mapOf("paymentType" to if (reverse) "" else "annuity") else mapOf("cap" to "monthly", "period" to "none"))
 data class SavedCalculation(val id: String = UUID.randomUUID().toString(), val timestamp: Long = System.currentTimeMillis(), val mode: String, val result: Calculation) {
-    val type get() = if (result.isLoan) "loan" else "deposit"
+    val type get() = result.type
 }
 data class InputFocusRequest(val formKey: String, val field: String, val sequence: Long)
 data class UiState(
     val tab: String = "loan", val settings: Settings = Settings(),
-    val loanReverse: Boolean = false, val depositReverse: Boolean = false,
-    val forms: Map<String, Form> = mapOf("loan" to emptyForm(true, false), "loanReverse" to emptyForm(true, true), "deposit" to emptyForm(false, false), "depositReverse" to emptyForm(false, true)),
+    val loanReverse: Boolean = false, val depositReverse: Boolean = false, val leasingReverse: Boolean = false,
+    val forms: Map<String, Form> = mapOf("loan" to emptyForm(true, false), "loanReverse" to emptyForm(true, true), "deposit" to emptyForm(false, false), "depositReverse" to emptyForm(false, true), "leasing" to emptyLeasingForm(), "leasingReverse" to emptyLeasingForm()),
     val current: SavedCalculation? = null, val history: List<SavedCalculation> = emptyList(),
     val calculating: Boolean = false, val resultRevision: Int = 0
 ) {
-    val reverse get() = when (tab) { "loan" -> loanReverse; "deposit" -> depositReverse; else -> false }
+    val reverse get() = when (tab) { "loan" -> loanReverse; "deposit" -> depositReverse; "leasing" -> leasingReverse; else -> false }
     val formKey get() = tab + if (reverse) "Reverse" else ""
-    val form get() = forms[formKey] ?: emptyForm(tab == "loan", reverse)
+    val form get() = forms[formKey] ?: if (tab == "leasing") emptyLeasingForm() else emptyForm(tab == "loan", reverse)
 }
 
 object StateJson {
+    private fun leasing(i: LeasingInput) = JSONObject().apply {
+        put("amount", i.amount); put("advance", i.advance); put("advanceUnit", i.advanceUnit)
+        put("rate", i.rate); put("term", i.term); put("paymentType", i.paymentType)
+        put("groups", JSONArray().apply { i.groups.forEach { put(JSONArray(listOf(it.count, it.payment))) } })
+        put("buyout", i.buyout); put("buyoutTiming", i.buyoutTiming); put("firstMonth", i.firstMonth)
+        put("expenses", i.expenses); put("vatRate", i.vatRate)
+    }
+    private fun leasing(j: JSONObject): LeasingInput {
+        val groups = j.getJSONArray("groups")
+        require(groups.length() <= 12)
+        return LeasingInput(j.getDouble("amount"), j.getDouble("advance"), j.getString("advanceUnit"),
+            j.getDouble("rate"), j.getInt("term"), j.getString("paymentType"),
+            (0 until groups.length()).map { groups.getJSONArray(it).let { g -> LeasePaymentGroup(g.getInt(0), g.getDouble(1)) } },
+            j.getDouble("buyout"), j.getString("buyoutTiming"), j.getInt("firstMonth"), j.getDouble("expenses"), j.getDouble("vatRate"))
+    }
     fun calculation(c: Calculation): JSONObject = JSONObject().apply {
+        c.leasing?.let { put("leasing", leasing(it)); put("nominal", c.nominalRate) }
         c.loan?.let { l -> put("loan", JSONObject().apply {
             put("amount", l.amount); put("rate", l.rate); put("term", l.term); put("fixed", l.fixedCommission)
             put("commission", l.percentCommission); put("paymentType", l.paymentType); put("down", l.downPayment)
@@ -58,13 +74,14 @@ object StateJson {
     fun calculation(j: JSONObject): Calculation {
         val l = j.optJSONObject("loan")?.let { LoanInput(it.getDouble("amount"), it.getDouble("rate"), it.getInt("term"), it.getDouble("fixed"), it.getDouble("commission"), it.getString("paymentType"), it.getDouble("down")) }
         val d = j.optJSONObject("deposit")?.let { DepositInput(it.getDouble("amount"), it.getDouble("rate"), it.getInt("term"), it.getDouble("addition"), it.getString("cap"), it.getString("period")) }
+        val lease = j.optJSONObject("leasing")?.let(::leasing)
         val a = j.getJSONArray("rows")
-        require((l != null) xor (d != null))
+        require(listOf(l, d, lease).count { it != null } == 1)
         require(a.length() in 1..999)
         val rows = (0 until a.length()).map { i -> a.getJSONArray(i).let {
             ScheduleRow(it.getInt(0), it.getDouble(1), it.getDouble(2), it.getDouble(3), it.getDouble(4), it.getDouble(5))
         } }
-        return Calculation(l, d, rows, j.getDouble("interest"), j.getDouble("commission"), j.getDouble("repayment"), j.getDouble("received"), j.getDouble("effective"), j.getDouble("final"), j.getDouble("additions"))
+        return Calculation(l, d, rows, j.getDouble("interest"), j.getDouble("commission"), j.getDouble("repayment"), j.getDouble("received"), j.getDouble("effective"), j.getDouble("final"), j.getDouble("additions"), lease, j.optDouble("nominal", 0.0))
     }
     private fun entry(e: SavedCalculation) = JSONObject().apply {
         put("id", e.id); put("timestamp", e.timestamp); put("mode", e.mode); put("result", calculation(e.result))
@@ -72,6 +89,7 @@ object StateJson {
     private fun entry(j: JSONObject) = SavedCalculation(j.getString("id"), j.getLong("timestamp"), j.getString("mode"), calculation(j.getJSONObject("result")))
     fun encode(state: UiState): String = JSONObject().apply {
         put("schema", 1); put("tab", state.tab); put("loanReverse", state.loanReverse); put("depositReverse", state.depositReverse)
+        put("leasingReverse", state.leasingReverse)
         put("settings", JSONObject().apply { put("theme", state.settings.theme); put("skin", state.settings.skin); put("hints", state.settings.hints) })
         put("forms", JSONObject().apply { state.forms.forEach { (key, form) -> put(key, JSONObject().apply {
             put("fields", JSONObject(form.fields)); put("manual", JSONArray(form.manual)); form.target?.let { put("target", it) }
@@ -94,7 +112,7 @@ object StateJson {
         val entries = (0 until minOf(h.length(), 10)).map { entry(h.getJSONObject(it)) }
         return UiState(tab = j.optString("tab").takeIf { it in listOf("deposit", "loan", "leasing", "history", "info") } ?: "loan",
             settings = Settings(s.optString("theme", "light"), s.optString("skin", "amber"), s.optBoolean("hints", true)),
-            loanReverse = j.optBoolean("loanReverse"), depositReverse = j.optBoolean("depositReverse"), forms = forms,
+            loanReverse = j.optBoolean("loanReverse"), depositReverse = j.optBoolean("depositReverse"), leasingReverse = j.optBoolean("leasingReverse"), forms = forms,
             current = j.optJSONObject("current")?.let(::entry), history = entries)
     }
 }
@@ -157,14 +175,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun mode(reverse: Boolean) {
         calculationJob?.cancel()
-        state = if (state.tab == "loan") state.copy(loanReverse = reverse, current = null, calculating = false)
-            else state.copy(depositReverse = reverse, current = null, calculating = false)
+        state = when (state.tab) {
+            "loan" -> state.copy(loanReverse = reverse, current = null, calculating = false)
+            "leasing" -> state.copy(leasingReverse = reverse, current = null, calculating = false)
+            else -> state.copy(depositReverse = reverse, current = null, calculating = false)
+        }
         persist()
     }
     fun settings(value: Settings) { state = state.copy(settings = value); persist() }
     fun edit(key: String, value: String) {
         calculationJob?.cancel()
         var form = state.form.with(key, value).copy(autoError = null)
+        if (state.tab == "leasing" && key == "advanceUnit" && value != state.form.text(key) && state.form.text("advance").isNotBlank()) {
+            val rubles = state.form.leasing(state.reverse).advanceAmount
+            form = form.with("advance", numberText(leaseRound(if (value == "rub") rubles else if (form.number("amount") > 0) rubles / form.number("amount") * 100 else 0.0)))
+        }
+        if (state.tab == "leasing" && key == "groupCount") {
+            val count = form.number(key).toInt().coerceIn(1, 12)
+            form = form.copy(fields = form.fields.filterKeys { field ->
+                val index = Regex("(?:count|payment)([0-9]+)").matchEntire(field)?.groupValues?.get(1)?.toIntOrNull()
+                index == null || index < count
+            })
+        }
         if (state.reverse) {
             if (state.tab == "loan") {
                 if (key == "down" && form.number("down") > form.number("amount")) {
@@ -172,14 +204,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     notify("Взнос не может быть больше суммы кредита/покупки")
                 }
                 form = ReverseForms.loan(form)
-            } else form = ReverseForms.deposit(form, key)
+            } else if (state.tab == "deposit") form = ReverseForms.deposit(form, key)
         }
         state = state.copy(forms = state.forms + (state.formKey to form), current = null, calculating = false)
         persist()
     }
     fun reset() {
         calculationJob?.cancel()
-        state = state.copy(forms = state.forms + (state.formKey to emptyForm(state.tab == "loan", state.reverse)), current = null, calculating = false)
+        state = state.copy(forms = state.forms + (state.formKey to if (state.tab == "leasing") emptyLeasingForm() else emptyForm(state.tab == "loan", state.reverse)), current = null, calculating = false)
         persist()
     }
     fun calculate(): Boolean {
@@ -198,6 +230,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         calculationJob = viewModelScope.launch {
             try {
                 var form = snapshot.form
+                if (snapshot.tab == "leasing") {
+                    val result = withContext(Dispatchers.Default) {
+                        if (snapshot.reverse) LeasingFinance.reverse(form.leasing(true)) else LeasingFinance.direct(form.leasing(false))
+                    }
+                    state = state.copy(current = SavedCalculation(mode = if (snapshot.reverse) "reverse" else "direct", result = result), calculating = false, resultRevision = state.resultRevision + 1)
+                    persist()
+                    return@launch
+                }
                 require(form.text("amount").isNotBlank() && form.number("amount") > 0) { "Укажите сумму для расчёта" }
                 require(form.number("term") in 1.0..999.0) { "Укажите срок от 1 до 999 месяцев" }
                 if (snapshot.reverse && snapshot.tab == "loan") {
@@ -262,6 +302,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 // Required inputs follow the visible form order; an explicitly entered zero rate is valid.
 private fun UiState.requiredInput(): Pair<String, String>? {
     val f = form
+    if (tab == "leasing") return f.leasingRequired(reverse)
     if (f.text("amount").isBlank() || f.number("amount") <= 0) return "amount" to "Укажите сумму для расчёта"
     if (tab == "loan" && reverse) {
         if (f.text("paymentType").isBlank()) return "paymentType" to "Выберите тип платежа"

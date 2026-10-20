@@ -26,8 +26,8 @@ class NativeAppTest {
     @Before fun setup() {
         rule.waitUntil(120000) { rule.onAllNodesWithText("DepoCred", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
         rule.runOnIdle {
-            // Each scenario starts with all four forms empty, including period selectors.
-            for (tab in listOf("loan", "deposit")) {
+            // Each scenario starts with all six forms empty, including period selectors.
+            for (tab in listOf("loan", "deposit", "leasing")) {
                 model.tab(tab)
                 for (reverse in listOf(false, true)) { model.mode(reverse); model.reset() }
                 model.mode(false)
@@ -366,12 +366,13 @@ class NativeAppTest {
         field("amount", "200000"); field("rate", "12"); field("term", "12"); calculate()
         rule.runOnIdle { model.saveCurrent(); model.clearNotice() }
         rule.onNodeWithTag("tab_leasing").performClick()
-        rule.onNodeWithTag("leasing_placeholder").assertIsDisplayed()
-        rule.onNodeWithTag("calculate").assertDoesNotExist()
-        screenshot("33-leasing-placeholder")
+        field("amount", "1500000"); field("advance", "20"); field("rate", "18"); field("term", "36"); calculate()
+        rule.runOnIdle { model.saveCurrent(); model.clearNotice() }
+        rule.onNodeWithTag("lease_result").assertExists()
+        screenshot("33-leasing-direct")
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("tab_leasing").assertIsSelected()
-        rule.onNodeWithTag("leasing_placeholder").assertIsDisplayed()
+        rule.onNodeWithTag("lease_result").assertExists()
         workingSystemBars(false)
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("tab_history").performClick()
@@ -381,7 +382,7 @@ class NativeAppTest {
         rule.mainClock.autoAdvance = true
         rule.waitForIdle()
         rule.onNodeWithTag("tab_history").assertIsSelected()
-        rule.runOnIdle { assertEquals(2, model.state.history.size) }
+        rule.runOnIdle { assertEquals(3, model.state.history.size) }
         rule.onNodeWithTag("history_entry_deposit").assertExists()
         rule.onNodeWithTag("history_entry_loan").assertExists()
         val filters = listOf("deposit", "loan", "leasing").map { rule.onNodeWithTag("history_filter_$it").fetchSemanticsNode().boundsInRoot }
@@ -397,19 +398,94 @@ class NativeAppTest {
         rule.onNodeWithTag("history_filter_leasing").performClick().assertIsSelected()
         rule.onNodeWithTag("history_entry_loan").assertDoesNotExist()
         rule.onNodeWithTag("history_entry_deposit").assertDoesNotExist()
-        rule.onNodeWithText("История расчетов пуста").assertExists()
+        rule.onNodeWithTag("history_entry_leasing").assertExists()
+        rule.onNodeWithText("История расчетов пуста").assertDoesNotExist()
         screenshot("36-history-leasing")
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("history_filter_leasing").assertIsSelected()
         rule.onNodeWithTag("history_filter_leasing").performClick()
         rule.onNodeWithTag("history_entry_deposit").assertExists()
         rule.onNodeWithTag("history_entry_loan").assertExists()
+        rule.onNodeWithTag("history_entry_leasing").assertExists()
         rule.runOnIdle { model.settings(Settings("dark", "violet")) }
         workingSystemBars(true)
         screenshot("37-menu-dark-violet")
         rule.activityRule.scenario.recreate()
         workingSystemBars(true)
         screenshot("39-dark-theme-after-recreation")
+    }
+    @Test fun leasingReverseFormsValidateGroupsAndPreserveCashFlowsAcrossReload() {
+        rule.onNodeWithTag("tab_leasing").performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
+        focused("amount"); keyboard(true)
+        rule.runOnIdle { model.clearNotice() }
+        rule.onNodeWithTag("field_amount").performTextReplacement("10300000")
+        next("amount", "advance"); rule.onNodeWithTag("field_advance").performTextReplacement("10")
+        next("advance", "count0"); rule.onNodeWithTag("field_count0").performTextReplacement("34")
+        next("count0", "payment0"); rule.onNodeWithTag("field_payment0").performTextReplacement("359210.80")
+        next("payment0", "buyout"); rule.onNodeWithTag("field_buyout").performTextReplacement("20000")
+        next("buyout", "firstMonth"); next("firstMonth", "expenses")
+        rule.onNodeWithTag("field_expenses").performTextReplacement("51000")
+        rule.onNodeWithTag("field_expenses").assert(hasImeAction(ImeAction.Done)).performImeAction()
+        keyboard(false)
+        calculate()
+        rule.runOnIdle {
+            assertEquals(20.48352330511784,model.state.current!!.result.nominalRate,1e-8)
+            model.saveCurrent(); model.clearNotice(); model.flush()
+            val restored = LocalStore(rule.activity.filesDir).read()
+            assertEquals(model.state.current,restored.current)
+            assertEquals("leasing",restored.history.first().type)
+        }
+        screenshot("40-leasing-reverse-result")
+        rule.onNodeWithText("Как рассчитана ставка").revealAndClick()
+        rule.onNodeWithText("Ставка лизинга").assertIsDisplayed()
+        screenshot("41-leasing-rate-info")
+        rule.onNodeWithText("ЗАКРЫТЬ").performClick()
+        rule.onNodeWithText("Платежи").revealAndClick()
+        rule.onNodeWithTag("schedule").assertIsDisplayed()
+        screenshot("42-leasing-payments")
+        rule.onNodeWithContentDescription("Назад").performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
+        rule.onNodeWithContentDescription("Единица аванса").revealAndClick()
+        rule.onNode(hasText("₽") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.runOnIdle { assertEquals(1030000.0,model.state.form.number("advance"),0.0) }
+        rule.onNodeWithTag("lease_add_group").revealAndClick()
+        field("count0","12"); field("payment0","300000"); field("count1","22"); field("payment1","391507.60")
+        screenshot("43-leasing-step-form")
+        calculate()
+        rule.runOnIdle { assertEquals(2,model.state.current!!.result.leasing!!.groups.size) }
+        rule.activityRule.scenario.recreate()
+        rule.onNodeWithTag("lease_result").assertExists()
+        rule.runOnIdle { assertEquals("391507.60",model.state.form.text("payment1")) }
+        rule.onNodeWithTag("tab_history").performClick()
+        rule.onNodeWithTag("history_filter_leasing").performClick()
+        rule.onNodeWithTag("history_entry_leasing").assertExists()
+        rule.onNodeWithContentDescription("Удалить расчёт").revealAndClick()
+        rule.runOnIdle { assertTrue(model.state.history.isEmpty()) }
+    }
+    @Test fun leasingPdfContainsFullScheduleAndUsesTheExistingSecureShareMechanism() {
+        val input = LeasingInput(8_500_000.0,1_700_000.0,"rub",groups=listOf(LeasePaymentGroup(18,456_912.86)),buyout=1_999.99,expenses=22_000.0)
+        val entry = SavedCalculation(mode="reverse",result=LeasingFinance.reverse(input))
+        val directory = File(rule.activity.filesDir,"qa").apply { mkdirs() }
+        val file = PdfReport.create(rule.activity,entry,"amber")
+        file.copyTo(File(directory,"leasing-sample.pdf"),overwrite=true)
+        PdfRenderer(ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
+            assertTrue(renderer.pageCount >= 2)
+            for (index in 0 until renderer.pageCount) renderer.openPage(index).use { page ->
+                val bitmap = Bitmap.createBitmap(page.width,page.height,Bitmap.Config.ARGB_8888)
+                page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                File(directory,"leasing-pdf-${index+1}.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+                bitmap.recycle()
+            }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(rule.activity,"${rule.activity.packageName}.fileprovider",file)
+        val intent = pdfShareIntent(uri)
+        assertEquals("application/pdf",intent.type)
+        assertEquals(uri,intent.clipData!!.getItemAt(0).uri)
+        rule.activity.contentResolver.openInputStream(uri).use { assertTrue(it!!.read() >= 0) }
+        val long = PdfReport.create(rule.activity,SavedCalculation(mode="reverse",result=LeasingFinance.reverse(input.copy(groups=listOf(LeasePaymentGroup(998,10000.0))))),"violet")
+        PdfRenderer(ParcelFileDescriptor.open(long,ParcelFileDescriptor.MODE_READ_ONLY)).use { assertTrue(it.pageCount>30) }
     }
     @Test fun settingsAndLocalStoreSurviveReload() {
         rule.onNodeWithTag("tab_info").performClick()
