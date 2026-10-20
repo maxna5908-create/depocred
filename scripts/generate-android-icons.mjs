@@ -17,6 +17,11 @@ for (const name of icons) {
     if (!d) throw new Error(`Unsupported ${name}: ${type}`);
     return `  <path android:pathData="${d}" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />`;
   }).join('\n');
+  if (name === 'coins') {
+    for (const [file, size, viewport, offset] of [['ic_launcher_foreground', 108, 48, 12], ['ic_coins', 288, 36, 6]]) {
+      await writeFile(new URL(`${file}.xml`, directory), `<!-- Lucide, ISC License. Same coins as the in-app splash; padded for Android masks. -->\n<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="${size}dp" android:height="${size}dp" android:viewportWidth="${viewport}" android:viewportHeight="${viewport}">\n  <group android:translateX="${offset}" android:translateY="${offset}">\n${paths}\n  </group>\n</vector>\n`);
+    }
+  }
   await writeFile(new URL(`lucide_${name.replaceAll('-', '_')}.xml`, directory), `<!-- Lucide, ISC License. See assets/Lucide-LICENSE.txt. -->\n<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">\n${paths}\n</vector>\n`);
 }
 await copyFile(new URL('../node_modules/lucide-react/LICENSE', import.meta.url), new URL('../android/app/src/main/assets/Lucide-LICENSE.txt', import.meta.url));

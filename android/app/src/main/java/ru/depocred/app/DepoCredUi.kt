@@ -5,9 +5,9 @@ package ru.depocred.app
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -56,6 +56,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.PlatformTextStyle
@@ -109,8 +110,18 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
           CompositionLocalProvider(LocalTextStyle provides TextStyle(fontFamily = Inter, fontSize = 14.sp, color = palette.text, platformStyle = PlatformTextStyle(includeFontPadding = false))) {
             val activity = LocalActivity.current
             val view = LocalView.current
-            SideEffect { activity?.let { WindowCompat.getInsetsController(it.window, view).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark } } }
             var splash by rememberSaveable { mutableStateOf(true) }
+            val splashTransition = remember { MutableTransitionState(splash) }
+            splashTransition.targetState = splash
+            val splashVisible = splashTransition.currentState || splashTransition.targetState
+            SideEffect {
+                activity?.let {
+                    WindowCompat.getInsetsController(it.window, view).apply {
+                        isAppearanceLightStatusBars = !dark && !splashVisible
+                        isAppearanceLightNavigationBars = !dark && !splashVisible
+                    }
+                }
+            }
             var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
             val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
             val scope = rememberCoroutineScope()
@@ -122,7 +133,6 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             val density = LocalDensity.current
             val ime = WindowInsets.ime
             val keyboard = ime.getBottom(density) > 0
-            LaunchedEffect(Unit) { delay(1800); splash = false }
             LaunchedEffect(state.tab, state.formKey, state.current?.id, state.resultRevision) {
                 if (state.current != null) {
                     // Wait for the actual result layout and keyboard resize, not a timer.
@@ -134,7 +144,7 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                 }
             }
             LaunchedEffect(model.notice) { if (model.notice != null) { delay(3500); model.clearNotice() } }
-            BackHandler(enabled = !splash && state.tab != "loan" && selected == null) { model.tab("loan") }
+            BackHandler(enabled = !splashVisible && state.tab != "loan" && selected == null) { model.tab("loan") }
             Box(Modifier.fillMaxSize().background(palette.background)) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 800.dp).fillMaxSize().clipToBounds().onGloballyPositioned { backdropOrigin = it.positionInRoot() }.drawWithContent {
@@ -173,7 +183,9 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                         }
                     }
                 }
-                AnimatedVisibility(splash, enter = fadeIn(), exit = fadeOut(tween(300))) { Splash(palette.primary) }
+                AnimatedVisibility(visibleState = splashTransition, exit = fadeOut(tween(600))) {
+                    Splash(Modifier.testTag("startup").semantics { stateDescription = if (splash) "Загрузка" else "Открытие приложения" }) { splash = false }
+                }
             }
             selected?.let { ScheduleScreen(it, { selectedId = null }, onExport) }
           }
@@ -193,12 +205,16 @@ private fun appTypography(): Typography {
         labelLarge = t.labelLarge.copy(fontFamily = Inter), labelMedium = t.labelMedium.copy(fontFamily = Inter), labelSmall = t.labelSmall.copy(fontFamily = Inter))
 }
 
-@Composable private fun Splash(color: Color) {
-    var entered by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (entered) 1f else .6f, tween(450), label = "splash")
-    LaunchedEffect(Unit) { entered = true }
-    Box(Modifier.fillMaxSize().background(color)) {
-        Column(Modifier.align(Alignment.Center).scale(scale), horizontalAlignment = Alignment.CenterHorizontally) {
+@Composable private fun Splash(modifier: Modifier = Modifier, onReady: () -> Unit) {
+    val scale = remember { Animatable(.6f) }
+    LaunchedEffect(Unit) {
+        // The pause starts only after the 2x slower drawing animation has finished.
+        scale.animateTo(1f, tween(900))
+        delay(1500)
+        onReady()
+    }
+    Box(modifier.fillMaxSize().background(colorResource(R.color.startup_orange))) {
+        Column(Modifier.align(Alignment.Center).testTag("startup_brand").scale(scale.value), horizontalAlignment = Alignment.CenterHorizontally) {
             Glyph(R.drawable.lucide_coins, null, Color.White, 96)
             Text("DepoCred", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White, modifier = Modifier.padding(top = 28.dp))
             Text("ВАШ ФИНАНСОВЫЙ АССИСТЕНТ", fontSize = 11.sp, color = Color.White.copy(alpha = .8f), letterSpacing = 1.sp, modifier = Modifier.padding(top = 8.dp))

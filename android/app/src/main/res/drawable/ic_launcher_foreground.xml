@@ -1,8 +1,9 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="1024" android:viewportHeight="1024">
-    <group android:scaleX="0.68" android:scaleY="0.68" android:translateX="164" android:translateY="164">
-    <path android:pathData="M590,380 A210,210 0,1 1,170 380 A210,210 0,1 1,590 380" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="60" />
-    <path android:pathData="M380,305 L380,455" android:strokeColor="#FFFFFFFF" android:strokeWidth="70" android:strokeLineCap="round" />
-    <path android:pathData="M580,480 A210,210 0,1 1,840 780" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="60" android:strokeLineCap="round" />
-    <path android:pathData="M748,565 L672,695" android:strokeColor="#FFFFFFFF" android:strokeWidth="70" android:strokeLineCap="round" />
-    </group>
+<!-- Lucide, ISC License. Same coins as the in-app splash; padded for Android masks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="48" android:viewportHeight="48">
+  <group android:translateX="12" android:translateY="12">
+  <path android:pathData="M2,8a6,6 0,1 0,12,0a6,6 0,1 0,-12,0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M18.09 10.37A6 6 0 1 1 10.34 18" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M7 6h1v4" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="m16.71 13.88.7.71-2.82 2.82" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  </group>
 </vector>

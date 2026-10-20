@@ -1,13 +1,21 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.DepoCred" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">#10B981</item>
-        <item name="android:windowBackground">#F9FAFB</item>
+        <item name="android:windowBackground">@color/startup_orange</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
     </style>
     <style name="Theme.DepoCred.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#10B981</item>
+        <item name="windowSplashScreenBackground">@color/startup_orange</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarDividerColor" tools:targetApi="p">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_coins</item>
         <item name="postSplashScreenTheme">@style/Theme.DepoCred</item>
     </style>
