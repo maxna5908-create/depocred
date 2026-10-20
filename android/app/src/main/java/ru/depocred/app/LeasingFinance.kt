@@ -134,7 +134,8 @@ fun Form.leasing(reverse: Boolean) = LeasingInput(
     amount = number("amount"), advance = number("advance"), advanceUnit = text("advanceUnit"),
     rate = number("rate"), term = number("term").toInt(), paymentType = text("paymentType"),
     groups = if (reverse) (0 until number("groupCount").toInt().coerceIn(1,12)).map { LeasePaymentGroup(number("count$it").toInt(), number("payment$it")) } else emptyList(),
-    buyout = number("buyout"), buyoutTiming = text("buyoutTiming"), firstMonth = number("firstMonth").toInt(), expenses = number("expenses"), vatRate = number("vat"))
+    buyout = number("buyout"), buyoutTiming = text("buyoutTiming"), firstMonth = number("firstMonth").toInt(), expenses = number("expenses"),
+    vatRate = if (reverse || text("paymentType") == "annuity") 0.0 else number("vat"))
 
 fun Form.leasingRequired(reverse: Boolean): Pair<String, String>? {
     if (number("amount") <= 0) return "amount" to "Укажите стоимость предмета лизинга"
@@ -152,6 +153,6 @@ fun Form.leasingRequired(reverse: Boolean): Pair<String, String>? {
     if (number("firstMonth") !in 1.0..999.0) return "firstMonth" to "Укажите месяц первого платежа от 1 до 999"
     if (leasing(reverse).maturity > 999) return (if (reverse) "count0" else "term") to "График должен укладываться в 999 месяцев"
     if (number("expenses") >= leasing(reverse).financed) return "expenses" to "Расходы в начале должны быть меньше суммы финансирования"
-    if (!reverse && number("vat") > 100) return "vat" to "НДС должен быть от 0 до 100%"
+    if (!reverse && text("paymentType") != "annuity" && number("vat") > 100) return "vat" to "НДС должен быть от 0 до 100%"
     return null
 }

@@ -142,5 +142,9 @@ class LeasingFinanceTest {
         f=f.with("payment0","0").with("buyout","100000")
         assertNull(f.leasingRequired(true))
         assertEquals("rate",emptyLeasingForm().with("amount","100000").leasingRequired(false)!!.first)
+        val annuity = emptyLeasingForm().with("amount","100000").with("rate","12").with("term","12").with("vat","200")
+        assertNull(annuity.leasingRequired(false))
+        assertEquals(0.0,annuity.leasing(false).vatRate,0.0)
+        assertEquals("vat",annuity.with("paymentType","uniform").leasingRequired(false)!!.first)
     }
 }
