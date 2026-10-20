@@ -39,8 +39,22 @@ class NativeAppTest {
     private fun field(key: String, value: String) {
         rule.onNodeWithTag("field_$key").performScrollTo().performTextReplacement(value)
     }
+    private fun SemanticsNodeInteraction.revealAndClick(): SemanticsNodeInteraction {
+        performScrollTo()
+        val menu = rule.onAllNodesWithTag("bottom_menu").fetchSemanticsNodes().firstOrNull()
+        if (menu != null) {
+            // The content viewport extends under the floating menu. A normal scrollTo
+            // can leave a target behind it; move the target into the tappable area.
+            val delta = fetchSemanticsNode().boundsInRoot.bottom - menu.boundsInRoot.top + 12 * rule.activity.resources.displayMetrics.density
+            if (delta > 0) {
+                rule.onNodeWithTag("content").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { it(0f, delta) }
+                rule.waitForIdle()
+            }
+        }
+        return performClick()
+    }
     private fun calculate() {
-        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
         rule.waitUntil(120000) { model.state.current != null }
     }
     private fun keyboard(visible: Boolean) {
@@ -83,7 +97,7 @@ class NativeAppTest {
         rule.mainClock.advanceTimeBy(200)
         screenshot("17-panel-pressed")
         rule.onNodeWithText("Прямой").performTouchInput { up() }
-        rule.onNodeWithTag("field_amount").performScrollTo().performClick().performTextReplacement("1000000")
+        rule.onNodeWithTag("field_amount").revealAndClick().performTextReplacement("1000000")
         keyboard(true)
         next("amount", "rate"); rule.onNodeWithTag("field_rate").performTextReplacement("12")
         next("rate", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
@@ -91,11 +105,11 @@ class NativeAppTest {
         nativeKeyboardAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
         rule.onNodeWithTag("field_commission").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
-        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
         rule.onNodeWithTag("field_term").assertDoesNotExist()
-        rule.onNodeWithTag("field_amount").performScrollTo().performClick().performTextReplacement("1000000")
-        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
-        rule.onNodeWithTag("field_amount").performScrollTo().performClick()
+        rule.onNodeWithTag("field_amount").revealAndClick().performTextReplacement("1000000")
+        rule.onNodeWithText("Аннуитетный — фиксированный").revealAndClick()
+        rule.onNodeWithTag("field_amount").revealAndClick()
         next("amount", "term"); rule.onNodeWithTag("field_term").performTextReplacement("12")
         next("term", "payment"); rule.onNodeWithTag("field_payment").performTextReplacement("90000")
         rule.runOnIdle { assertEquals("total", model.state.form.target) }
@@ -106,11 +120,11 @@ class NativeAppTest {
         rule.onNodeWithTag("field_down").assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
         rule.onNodeWithTag("tab_deposit").performClick()
-        rule.onNodeWithTag("field_term").performScrollTo().performClick().assert(hasImeAction(ImeAction.Done)).performImeAction()
+        rule.onNodeWithTag("field_term").revealAndClick().assert(hasImeAction(ImeAction.Done)).performImeAction()
         keyboard(false)
-        rule.onNodeWithContentDescription("Пополнение").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Пополнение").revealAndClick()
         rule.onNodeWithText("Раз в месяц").performClick()
-        rule.onNodeWithTag("field_term").performScrollTo().performClick()
+        rule.onNodeWithTag("field_term").revealAndClick()
         next("term", "addition")
         nativeKeyboardAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
         screenshot("19-deposit-next")
@@ -118,25 +132,26 @@ class NativeAppTest {
         keyboard(false)
     }
     @Test fun missingInputsShowNoticeAndFocusTheRequiredField() {
-        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
         rule.onNodeWithText("Укажите сумму для расчёта").assertExists()
         focused("amount")
         keyboard(true)
         screenshot("20-required-amount")
         rule.onNodeWithTag("field_amount").performTextReplacement("1000000")
-        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
         focused("rate")
         keyboard(true)
         rule.onNodeWithTag("field_rate").performTextReplacement("0")
-        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
         focused("term")
         keyboard(true)
         rule.onNodeWithTag("field_term").performTextReplacement("12")
         calculate(); keyboard(false)
         rule.runOnIdle { assertEquals(0.0, model.state.current!!.result.totalInterest, .001) }
         rule.onNodeWithTag("tab_deposit").performClick()
-        rule.onNodeWithText("Обратный").performScrollTo().performClick()
-        rule.onNodeWithTag("calculate").performScrollTo().performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
+        rule.onNodeWithTag("calculate").revealAndClick()
+        rule.onNodeWithText("Укажите сумму для расчёта").assertExists()
         focused("amount")
         keyboard(true)
     }
@@ -158,24 +173,24 @@ class NativeAppTest {
         field("amount", "1000000"); field("rate", "12"); field("term", "12"); field("fixed", "2500"); field("commission", "1.5"); calculate()
         rule.runOnIdle { assertEquals(88848.788678, model.state.current!!.result.firstPayment, .01) }
         screenshot("02-loan-results")
-        rule.onNodeWithContentDescription("Информация: Номинальная ставка").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Информация: Номинальная ставка").revealAndClick()
         rule.onNodeWithText("ЭКСКУРС").assertIsDisplayed()
         rule.onNodeWithText("J = j / m").assertExists()
         screenshot("07-nominal-info")
         rule.onNodeWithText("12,00% / 12 = 1,0000% в месяц").performScrollTo().assertIsDisplayed()
         screenshot("08-nominal-steps")
         rule.onNodeWithText("ПОНЯТНО").performClick()
-        rule.onNodeWithContentDescription("Информация: Эффективная ставка").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Информация: Эффективная ставка").revealAndClick()
         rule.onNodeWithText("Prec = Σ [Mk / (1+r)^k]").assertExists()
         screenshot("09-effective-info")
         rule.onNodeWithText("${money(1000000.0)} − ${money(17500.0)} = ${money(982500.0)}").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("× 100% = ", substring = true).performScrollTo().assertIsDisplayed()
         screenshot("10-effective-steps")
         rule.onNodeWithContentDescription("Закрыть окно").performClick()
-        rule.onNodeWithContentDescription("Сохранить расчёт").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Сохранить расчёт").revealAndClick()
         rule.onNodeWithTag("tab_history").performClick()
         rule.runOnIdle { assertEquals(1, model.state.history.size) }
-        rule.onNodeWithText("График платежей").performScrollTo().performClick()
+        rule.onNodeWithText("График платежей").revealAndClick()
         rule.onNodeWithTag("schedule").assertExists()
         screenshot("11-loan-schedule")
         rule.onNodeWithContentDescription("Назад").performClick()
@@ -188,22 +203,22 @@ class NativeAppTest {
         rule.onNodeWithTag("tab_deposit").performClick()
         screenshot("12-deposit-form")
         field("amount", "250000"); field("rate", "13.5"); field("term", "37")
-        rule.onNodeWithContentDescription("Пополнение").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Пополнение").revealAndClick()
         screenshot("15-deposit-options")
         rule.onNodeWithText("Раз в месяц").performClick()
-        rule.onNodeWithContentDescription("Капитализация процентов").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Капитализация процентов").revealAndClick()
         screenshot("16-capitalization-options")
         rule.onNode(hasText("Ежемесячно") and hasAnyAncestor(isDialog())).performClick()
         field("addition", "7500")
         calculate()
         rule.runOnIdle { assertTrue(model.state.current!!.result.finalAmount > 600000) }
         screenshot("04-deposit-results")
-        rule.onNodeWithText("График начислений").performScrollTo().performClick()
+        rule.onNodeWithText("График начислений").revealAndClick()
         rule.onNode(hasText("ПОПОЛНЕНИЯ") and hasAnyAncestor(isDialog())).assertIsDisplayed()
         rule.onNodeWithText("% ЗА ПЕРИОД").assertExists()
         screenshot("13-deposit-schedule")
         rule.onNodeWithContentDescription("Назад").performClick()
-        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
         field("amount", "100000"); field("rate", "12"); field("term", "12")
         rule.runOnIdle { assertTrue(model.state.form.number("final") > 112000); assertEquals("final", model.state.form.target) }
         field("rate", "")
@@ -241,24 +256,24 @@ class NativeAppTest {
         screenshot("22-floating-menu-dark")
     }
     @Test fun reverseDepositManualEditsAndLoanPrerequisitesMatchThePwa() {
-        rule.onNodeWithText("Обратный").performScrollTo().performClick()
-        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
+        rule.onNodeWithText("Аннуитетный — фиксированный").revealAndClick()
         rule.onNodeWithTag("field_term").assertDoesNotExist()
         focused("amount")
         field("amount", "100000")
-        rule.onNodeWithText("Аннуитетный — фиксированный").performScrollTo().performClick()
+        rule.onNodeWithText("Аннуитетный — фиксированный").revealAndClick()
         field("term", "12"); field("payment", "10000")
         rule.onNodeWithTag("field_total").assertIsNotEnabled()
         rule.runOnIdle { assertEquals("120000", model.state.form.text("total")) }
         field("payment", "")
         rule.onNodeWithTag("field_total").assertIsEnabled()
         rule.runOnIdle { assertEquals("", model.state.form.text("total")) }
-        rule.onNodeWithTag("field_down").performScrollTo().performClick().performImeAction()
+        rule.onNodeWithTag("field_down").revealAndClick().performImeAction()
         keyboard(false)
         rule.onNodeWithTag("tab_deposit").performClick()
-        rule.onNodeWithText("Обратный").performScrollTo().performClick()
+        rule.onNodeWithText("Обратный").revealAndClick()
         field("amount", "100000"); field("rate", "12"); field("term", "12")
-        rule.onNodeWithContentDescription("Очистить Итоговая сумма (₽)", useUnmergedTree = true).performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Очистить Итоговая сумма (₽)", useUnmergedTree = true).revealAndClick()
         rule.runOnIdle {
             assertEquals("", model.state.form.text("final"))
             assertEquals("100000", model.state.form.text("amount")); assertEquals("12", model.state.form.text("rate"))
@@ -308,8 +323,8 @@ class NativeAppTest {
     @Test fun settingsAndLocalStoreSurviveReload() {
         rule.onNodeWithTag("tab_info").performClick()
         screenshot("14-info-light")
-        rule.onNodeWithText("Темная").performScrollTo().performClick()
-        rule.onNodeWithContentDescription("Фиолетовая").performScrollTo().performClick()
+        rule.onNodeWithText("Темная").revealAndClick()
+        rule.onNodeWithContentDescription("Фиолетовая").revealAndClick()
         screenshot("05-info-dark")
         rule.onNodeWithTag("tab_loan").performClick()
         screenshot("06-loan-dark")
