@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.os.SystemClock
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -23,12 +24,20 @@ class StartupScreenTest {
 
     @Test fun orangeStartupHoldsAfterDrawingThenFadesAndDoesNotReplayOnRecreation() {
         rule.waitUntil(15000) { rule.onAllNodesWithTag("startup").fetchSemanticsNodes().isNotEmpty() }
+        fun whitePixels(): Int {
+            // A graphicsLayer scales drawing, not the Column's layout measurements.
+            val bitmap = rule.onNodeWithTag("startup_brand").captureToImage().asAndroidBitmap()
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            return pixels.count { Color.red(it) > 235 && Color.green(it) > 235 && Color.blue(it) > 235 && Color.alpha(it) > 235 }
+        }
         rule.mainClock.advanceTimeBy(480)
-        val middleWidth = rule.onNodeWithTag("startup_brand").fetchSemanticsNode().boundsInRoot.width
+        val middlePixels = whitePixels()
         rule.mainClock.advanceTimeBy(520)
         rule.waitForIdle()
-        assertTrue("Drawing must still be progressing after the old 450ms duration", rule.onNodeWithTag("startup_brand").fetchSemanticsNode().boundsInRoot.width > middleWidth + 1)
         val holdStarted = SystemClock.elapsedRealtime()
+        val finalPixels = whitePixels()
+        assertTrue("Drawing must still progress after 450ms: $middlePixels -> $finalPixels", finalPixels > middlePixels * 1.02)
         rule.onNodeWithTag("startup").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Загрузка"))
         rule.runOnUiThread {
             val controller = WindowCompat.getInsetsController(rule.activity.window, rule.activity.window.decorView)
@@ -59,7 +68,7 @@ class StartupScreenTest {
         rule.mainClock.autoAdvance = true
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("startup").assertDoesNotExist()
-        rule.onNodeWithTag("field_amount").assertExists()
+        rule.onNodeWithTag("bottom_menu").assertExists()
 
         // The launcher background is fixed orange; its foreground is the splash's Lucide coins.
         val launcher = rule.activity.applicationInfo.loadIcon(rule.activity.packageManager) as AdaptiveIconDrawable

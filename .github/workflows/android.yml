@@ -83,6 +83,8 @@ jobs:
             adb shell wm dismiss-keyguard
             adb install -t artifacts/outputs/apk/debug/app-debug.apk
             adb install -t artifacts/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            # Keep Compose motion enabled for the startup timing/frame checks.
+            adb shell settings put global animator_duration_scale 1
             adb shell settings put secure show_ime_with_hard_keyboard 1
             adb shell ime enable com.android.inputmethod.latin/.LatinIME
             adb shell ime set com.android.inputmethod.latin/.LatinIME
