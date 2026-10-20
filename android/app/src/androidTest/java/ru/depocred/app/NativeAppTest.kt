@@ -258,7 +258,7 @@ class NativeAppTest {
         rule.onNodeWithTag("tab_deposit").performClick()
         rule.onNodeWithText("Обратный").performScrollTo().performClick()
         field("amount", "100000"); field("rate", "12"); field("term", "12")
-        field("final", "")
+        rule.onNodeWithContentDescription("Очистить Итоговая сумма (₽)", useUnmergedTree = true).performScrollTo().performClick()
         rule.runOnIdle {
             assertEquals("", model.state.form.text("final"))
             assertEquals("100000", model.state.form.text("amount")); assertEquals("12", model.state.form.text("rate"))

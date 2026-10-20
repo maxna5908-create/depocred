@@ -329,7 +329,7 @@ internal fun Modifier.outsideShadow(shape: Shape, opacity: Float) = drawWithCach
                         inner()
                         if (form.text(key).isNotEmpty() && suffixX < maxWidth - 20.dp) Text(suffix, color = Color(0xFF94A3B8), fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterStart).offset(x = suffixX))
                     }
-                    if (form.text(key).isNotEmpty() && enabled && !calculated) Box(Modifier.size(24.dp).clickable { onEdit(key, "") }.semantics { contentDescription = "Очистить $label" }, contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_x, null, p.muted, 13) }
+                    if (form.text(key).isNotEmpty() && enabled && !(calculated && lockCalculated)) Box(Modifier.size(24.dp).clickable { onEdit(key, "") }.semantics { contentDescription = "Очистить $label" }, contentAlignment = Alignment.Center) { Glyph(R.drawable.lucide_x, null, p.muted, 13) }
                 }
             })
     }
