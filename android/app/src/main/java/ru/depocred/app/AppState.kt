@@ -201,7 +201,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     require(form.text("paymentType").isNotBlank()) { "Выберите тип платежа" }
                     require(form.number("payment") > 0 && form.number("total") > 0) { "Заполните любые два значения из трёх" }
                     require(form.number("total") >= form.number("amount") - form.number("down")) { "Сумма возврата не может быть меньше суммы кредита" }
-                    val rate = Finance.loanRate(form.number("amount") - form.number("down"), form.number("term").toInt(), form.number("payment"), form.text("paymentType"))
+                    val principal = form.number("amount") - form.number("down")
+                    // PWA returns zero when a whole-ruble derived payment rounds below
+                    // principal / term. The separately validated total still covers it.
+                    val rate = if (form.number("payment") * form.number("term") <= principal) 0.0
+                        else Finance.loanRate(principal, form.number("term").toInt(), form.number("payment"), form.text("paymentType"))
                     form = form.with("rate", numberText(rate))
                 } else if (snapshot.reverse && snapshot.tab == "deposit") {
                     form.autoError?.let { throw IllegalArgumentException(it) }

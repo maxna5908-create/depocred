@@ -268,8 +268,13 @@ class NativeAppTest {
         field("payment", "")
         rule.onNodeWithTag("field_total").assertIsEnabled()
         rule.runOnIdle { assertEquals("", model.state.form.text("total")) }
-        rule.onNodeWithTag("field_down").revealAndClick().performImeAction()
-        keyboard(false)
+        field("total", "100000")
+        rule.runOnIdle { assertEquals("8333", model.state.form.text("payment")) }
+        calculate(); keyboard(false)
+        rule.runOnIdle {
+            assertEquals(0.0, model.state.current!!.result.loan!!.rate, 0.0)
+            assertEquals(100000.0, model.state.current!!.result.totalRepayment, .01)
+        }
         rule.onNodeWithTag("tab_deposit").performClick()
         rule.onNodeWithText("Обратный").revealAndClick()
         field("amount", "100000"); field("rate", "12"); field("term", "12")
