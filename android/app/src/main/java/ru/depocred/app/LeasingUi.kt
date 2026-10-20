@@ -51,7 +51,7 @@ import androidx.core.view.WindowCompat
         AttachedPanel(listOf("Прямой", "Обратный"), if (state.reverse) 1 else 0, { focus.clearFocus(); model.mode(it == 1) }) {
             if (state.settings.hints) LeaseHint(if (state.reverse)
                 "Укажите стоимость, аванс и платежи из предложения. Для ступенчатого графика добавьте группы в порядке оплаты. Выкуп укажите отдельно, не включайте его повторно в группу."
-                else "По стоимости, авансу и ставке рассчитайте платежи. Аннуитет — банковская модель; равномерный и убывающий графики — модель финансирования из таблицы.")
+                else "Укажите стоимость, аванс, ставку и срок, чтобы рассчитать платежи. В выборе графика описано, как рассчитывается каждый вариант. Выкуп и отдельные расходы учитываются дополнительно.")
             Numeric("Стоимость предмета с НДС (₽)", "amount", f, model::edit)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
                 Numeric(if (f.text("advanceUnit") == "percent") "Аванс (%)" else "Аванс (₽)", "advance", f, model::edit, Modifier.weight(1f), if (f.text("advanceUnit") == "percent") "%" else "₽")
@@ -114,7 +114,7 @@ import androidx.core.view.WindowCompat
             Text(options.firstOrNull { it.first == value }?.second ?: "Выбрать", color = p.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
         }
     }
-    if (open) ChoiceDialog(label, value, options, { open = false }) { onSelect(it); open = false }
+    if (open) ChoiceDialog(label, value, options, { open = false }, descriptions = if (label == "График платежей") LEASE_TYPE_DESCRIPTIONS else emptyMap()) { onSelect(it); open = false }
 }
 
 @Composable internal fun LeasingResult(entry: SavedCalculation, onSave: (() -> Unit)?, onSchedule: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit) {
@@ -134,6 +134,7 @@ import androidx.core.view.WindowCompat
             val last = c.rows[lastRegular - 1].payment - if (i.buyoutTiming == "last") i.buyout else 0.0
             MetricPair("Первый платёж" to leaseMoney(c.rows[i.firstMonth - 1].payment - if (i.count == 1 && i.buyoutTiming == "last") i.buyout else 0.0), "Последний регулярный" to leaseMoney(last), true)
             Text(LEASE_TYPES.first { it.first == i.paymentType }.second, color = p.muted, fontSize = 11.sp)
+            Text(LEASE_TYPE_DESCRIPTIONS.getValue(i.paymentType), color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
         }
         MetricPair("Стоимость предмета" to leaseMoney(i.amount), "Аванс" to leaseMoney(i.advanceAmount))
         MetricPair("Финансирование" to leaseMoney(i.financed), "До последнего платежа" to "${i.maturity} мес.")

@@ -198,6 +198,10 @@ object Finance {
     }
 }
 
+val LOAN_PAYMENT_DESCRIPTIONS = mapOf(
+    "annuity" to "Равные регулярные платежи. Проценты начисляются на остаток долга: доля процентов уменьшается, а доля погашения долга растёт.",
+    "differentiated" to "Долг погашается равными частями. Проценты начисляются на уменьшающийся остаток, поэтому при положительной ставке платежи постепенно снижаются."
+)
 val CAP_OPTIONS = listOf("none" to "В конце срока", "daily" to "Ежедневно", "weekly" to "Еженедельно", "monthly" to "Ежемесячно", "quarterly" to "Ежеквартально", "semi-yearly" to "Раз в полгода", "yearly" to "Ежегодно")
 val ADD_OPTIONS = listOf("none" to "Нет", "monthly" to "Раз в месяц", "quarterly" to "Раз в квартал", "semi-yearly" to "Раз в полгода", "yearly" to "Раз в год")
 fun money(value: Double): String = NumberFormat.getNumberInstance(Locale.forLanguageTag("ru-RU")).apply { maximumFractionDigits = 0 }.format(value) + " ₽"

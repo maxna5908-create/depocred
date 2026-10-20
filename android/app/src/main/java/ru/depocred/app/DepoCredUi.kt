@@ -155,7 +155,7 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                 }
             }
             LaunchedEffect(model.notice) { if (model.notice != null) { delay(3500); model.clearNotice() } }
-            BackHandler(enabled = !splashVisible && state.tab != "loan" && selected == null) { model.tab("loan") }
+            BackHandler(enabled = !splashVisible && state.tab != "deposit" && selected == null) { model.tab("deposit") }
             Box(Modifier.fillMaxSize().background(palette.background)) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding(), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 800.dp).fillMaxSize().clipToBounds().onGloballyPositioned { backdropOrigin = it.positionInRoot() }.drawWithContent {
@@ -469,7 +469,10 @@ private val NumberGrouping = VisualTransformation { input ->
                 listOf("annuity" to "Аннуитетный — фиксированный", "differentiated" to "Дифференцированный — уменьшаемый").forEach { (key, label) ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, p.border, RoundedCornerShape(12.dp)).clickable { model.paymentType(key) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(16.dp).border(2.dp, if (form.text("paymentType") == key) p.primary else p.muted.copy(alpha = .4f), CircleShape), contentAlignment = Alignment.Center) { if (form.text("paymentType") == key) Box(Modifier.size(8.dp).background(p.primary, CircleShape)) }
-                        Text(label, fontSize = 11.sp, color = p.text)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(label, fontSize = 11.sp, color = p.text)
+                            Text(LOAN_PAYMENT_DESCRIPTIONS.getValue(key), fontSize = 11.sp, lineHeight = 16.sp, color = p.muted)
+                        }
                     }
                 }
                 }
@@ -551,6 +554,7 @@ private val NumberGrouping = VisualTransformation { input ->
         val tabs = c.isLoan && entry.mode != "reverse"
         val resultContent: @Composable ColumnScope.() -> Unit = {
             if (onSave == null) Text(SimpleDateFormat("dd MMM yyyy — HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(entry.timestamp)), color = p.muted, fontSize = 10.sp)
+            c.loan?.let { Text(LOAN_PAYMENT_DESCRIPTIONS.getValue(it.paymentType), color = p.muted, fontSize = 11.sp, lineHeight = 16.sp) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (c.isLoan) "Ежемесячный платеж" else "Итоговая сумма", fontSize = 13.sp, color = p.muted, modifier = Modifier.weight(1f))
                 Surface(shape = RoundedCornerShape(8.dp), color = p.primary.copy(alpha = .12f), border = BorderStroke(1.dp, p.primary.copy(alpha = .3f))) {

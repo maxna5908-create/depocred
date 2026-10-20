@@ -22,7 +22,12 @@ fun leaseMoney(value: Double): String = java.text.NumberFormat.getNumberInstance
     minimumFractionDigits = 2; maximumFractionDigits = 2
 }.format(value) + " ₽"
 
-val LEASE_TYPES = listOf("annuity" to "Аннуитетный", "uniform" to "Равномерный (по модели XLS)", "differentiated" to "Убывающий (по модели XLS)")
+val LEASE_TYPES = listOf("annuity" to "Аннуитетный", "uniform" to "Равномерный", "differentiated" to "Убывающий")
+val LEASE_TYPE_DESCRIPTIONS = mapOf(
+    "annuity" to "Равные регулярные платежи, рассчитанные по ставке и сроку с учётом выкупа. Доля процентов уменьшается, а доля погашения долга растёт.",
+    "uniform" to "Сначала рассчитываются проценты при погашении долга равными частями. Затем сумма погашаемого долга и процентов делится поровну между платежами. Поэтому платёж отличается от аннуитетного.",
+    "differentiated" to LOAN_PAYMENT_DESCRIPTIONS.getValue("differentiated")
+)
 val LEASE_TIMINGS = listOf("next" to "Через месяц после платежей", "last" to "Вместе с последним платежом")
 
 /** Borrower's gross cash flows. No tax deductions or assumed supplier funding dates. */
@@ -62,8 +67,8 @@ object LeasingFinance {
             val last = input.firstMonth + count - 2
             payments[last] = leaseRound(payments[last] + (p - pv) * exp((last + 1) * discount))
         } else {
-            // XLS: equal principal, interest on the declining gross funding balance.
-            // One consistent VAT multiplier replaces the source's mixed 18%/1.2.
+            // Equal principal, interest on the declining gross funding balance.
+            // Apply a single VAT multiplier only to financing interest.
             val principal = (p - input.buyout) / count
             val grossRate = i * (1 + input.vatRate / 100)
             val unrounded = (0 until count).map { index ->

@@ -30,7 +30,7 @@ data class SavedCalculation(val id: String = UUID.randomUUID().toString(), val t
 }
 data class InputFocusRequest(val formKey: String, val field: String, val sequence: Long)
 data class UiState(
-    val tab: String = "loan", val settings: Settings = Settings(),
+    val tab: String = "deposit", val settings: Settings = Settings(),
     val loanReverse: Boolean = false, val depositReverse: Boolean = false, val leasingReverse: Boolean = false,
     val forms: Map<String, Form> = mapOf("loan" to emptyForm(true, false), "loanReverse" to emptyForm(true, true), "deposit" to emptyForm(false, false), "depositReverse" to emptyForm(false, true), "leasing" to emptyLeasingForm(), "leasingReverse" to emptyLeasingForm()),
     val current: SavedCalculation? = null, val history: List<SavedCalculation> = emptyList(),
@@ -110,7 +110,7 @@ object StateJson {
         } }
         val h = j.getJSONArray("history")
         val entries = (0 until minOf(h.length(), 10)).map { entry(h.getJSONObject(it)) }
-        return UiState(tab = j.optString("tab").takeIf { it in listOf("deposit", "loan", "leasing", "history", "info") } ?: "loan",
+        return UiState(tab = j.optString("tab").takeIf { it in listOf("deposit", "loan", "leasing", "history", "info") } ?: "deposit",
             settings = Settings(s.optString("theme", "light"), s.optString("skin", "amber"), s.optBoolean("hints", true)),
             loanReverse = j.optBoolean("loanReverse"), depositReverse = j.optBoolean("depositReverse"), leasingReverse = j.optBoolean("leasingReverse"), forms = forms,
             current = j.optJSONObject("current")?.let(::entry), history = entries)

@@ -343,6 +343,7 @@ class NativeAppTest {
     @Test fun fiveMenuTabsAndThreeHistoryFiltersPreserveCalculationsAndPreferences() {
         val freshDirectory = File(rule.activity.cacheDir, "fresh-defaults-${System.nanoTime()}").apply { mkdirs() }
         val fresh = LocalStore(freshDirectory).read()
+        assertEquals("deposit", fresh.tab)
         assertEquals("light", fresh.settings.theme)
         assertEquals("amber", fresh.settings.skin)
         val legacy = StateJson.decode(StateJson.encode(UiState(settings = Settings("dark", "emerald"))))
@@ -366,6 +367,13 @@ class NativeAppTest {
         field("amount", "200000"); field("rate", "12"); field("term", "12"); calculate()
         rule.runOnIdle { model.saveCurrent(); model.clearNotice() }
         rule.onNodeWithTag("tab_leasing").performClick()
+        rule.onNodeWithContentDescription("График платежей").revealAndClick()
+        LEASE_TYPES.forEach { (key, label) ->
+            rule.onNodeWithText(label).assertExists()
+            rule.onNodeWithText(LEASE_TYPE_DESCRIPTIONS.getValue(key)).assertExists()
+        }
+        screenshot("44-leasing-payment-descriptions")
+        rule.onNodeWithContentDescription("Закрыть окно").performClick()
         field("amount", "1500000"); field("advance", "20"); field("rate", "18"); field("term", "36"); calculate()
         rule.runOnIdle { model.saveCurrent(); model.clearNotice() }
         rule.onNodeWithTag("lease_result").assertExists()

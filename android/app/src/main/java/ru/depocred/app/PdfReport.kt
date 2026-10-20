@@ -111,6 +111,7 @@ object PdfReport {
                     }
                     pair("Ставка и срок", "${percent(l.rate)} | ${l.term} мес.")
                     pair("Тип платежа", if (l.paymentType == "annuity") "Аннуитетный" else "Дифференцированный")
+                    pair("Принцип расчёта", LOAN_PAYMENT_DESCRIPTIONS.getValue(l.paymentType))
                     if (c.totalCommission > 0) pair("Комиссия", "${money(l.fixedCommission)} + ${percent(l.percentCommission)} = ${money(c.totalCommission)}")
                     pair("Сумма платежа", if (l.paymentType == "annuity") money(c.firstPayment) else "от ${money(c.firstPayment)} до ${money(c.rows.last().payment)}")
                 } else {
@@ -187,6 +188,7 @@ object PdfReport {
             if (i.buyout > 0) pair("Момент выкупа", LEASE_TIMINGS.first { it.first == i.buyoutTiming }.second)
             if (mode != "reverse") {
                 pair("График", LEASE_TYPES.first { it.first == i.paymentType }.second)
+                pair("Принцип расчёта", LEASE_TYPE_DESCRIPTIONS.getValue(i.paymentType))
                 pair("Ставка финансирования", percent(i.rate))
                 if (i.paymentType != "annuity") pair("НДС на проценты финансирования", percent(i.vatRate))
             } else i.groups.forEachIndexed { index, g -> pair("Группа ${index + 1}", "${g.count} × ${leaseMoney(g.payment)}") }

@@ -26,7 +26,7 @@ import java.util.Locale
 import kotlin.math.pow
 
 /** Deposit selectors have their own 24px card, as in DepositCalculator.tsx. */
-@Composable internal fun ChoiceDialog(title: String, selected: String, options: List<Pair<String, String>>, onClose: () -> Unit, onSelect: (String) -> Unit) {
+@Composable internal fun ChoiceDialog(title: String, selected: String, options: List<Pair<String, String>>, onClose: () -> Unit, descriptions: Map<String, String> = emptyMap(), onSelect: (String) -> Unit) {
     val p = LocalPalette.current
     val height = LocalConfiguration.current.screenHeightDp.dp
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -48,7 +48,10 @@ import kotlin.math.pow
                         val active = key == selected
                         Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(key) }, shape = RoundedCornerShape(12.dp), color = if (active) p.primary else if (p.dark) Color.White.copy(alpha = .05f) else p.field) {
                             Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(label, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, color = if (active) Color.White else p.text, modifier = Modifier.weight(1f))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(label, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, color = if (active) Color.White else p.text)
+                                    descriptions[key]?.let { description -> Text(description, fontSize = 12.sp, lineHeight = 18.sp, color = if (active) Color.White.copy(alpha = .9f) else p.muted) }
+                                }
                                 if (active) Box(Modifier.size(8.dp).background(Color.White, RoundedCornerShape(4.dp)))
                             }
                         }
