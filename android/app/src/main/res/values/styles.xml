@@ -4,7 +4,11 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">@color/startup_orange</item>
-        <item name="android:windowBackground">@color/startup_orange</item>
+        <item name="android:windowBackground">#F9FAFB</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarDividerColor" tools:targetApi="p">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
         <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
     </style>
     <style name="Theme.DepoCred.Starting" parent="Theme.SplashScreen">

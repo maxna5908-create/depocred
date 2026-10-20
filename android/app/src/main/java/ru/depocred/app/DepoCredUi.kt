@@ -101,7 +101,8 @@ internal data class Palette(val dark: Boolean, val primary: Color) {
     val field get() = if (dark) Color.White.copy(alpha = .08f) else Color.Black.copy(alpha = .05f)
     val border get() = if (dark) Color.White.copy(alpha = .18f) else Color.Black.copy(alpha = .10f)
     val solid get() = if (dark) Color(0xFF0F172A) else Color(0xFFF9FAFB)
-    val background get() = Brush.radialGradient(listOf(if (dark) Color(0xFF374151) else Color(0xFFF9FAFB), if (dark) Color(0xFF111827) else Color(0xFFE5E7EB)), center = Offset.Zero, radius = 2400f)
+    val backgroundColors get() = listOf(if (dark) Color(0xFF374151) else Color(0xFFF9FAFB), if (dark) Color(0xFF111827) else Color(0xFFE5E7EB))
+    val background get() = Brush.radialGradient(backgroundColors, center = Offset.Zero, radius = 2400f)
 }
 internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFFF59E0B)) }
 
@@ -121,14 +122,17 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             val splashTransition = remember { MutableTransitionState(splash) }
             splashTransition.targetState = splash
             val splashVisible = splashTransition.currentState || splashTransition.targetState
-            SideEffect {
-                activity?.let {
-                    WindowCompat.getInsetsController(it.window, view).apply {
-                        isAppearanceLightStatusBars = !dark && !splashVisible
-                        isAppearanceLightNavigationBars = !dark && !splashVisible
-                    }
+            val startupColor = colorResource(R.color.startup_orange).toArgb()
+            val windowBackground = remember(splashVisible, dark, startupColor) {
+                if (splashVisible) android.graphics.drawable.ColorDrawable(startupColor)
+                else android.graphics.drawable.GradientDrawable().apply {
+                    gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+                    colors = palette.backgroundColors.map { it.toArgb() }.toIntArray()
+                    setGradientCenter(0f, 0f)
+                    gradientRadius = 2400f
                 }
             }
+            SideEffect { activity?.let { applyAppWindow(it, view, windowBackground, !dark && !splashVisible) } }
             var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
             val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
             val scope = rememberCoroutineScope()
@@ -211,6 +215,26 @@ private fun appTypography(): Typography {
         titleLarge = t.titleLarge.copy(fontFamily = Inter), titleMedium = t.titleMedium.copy(fontFamily = Inter), titleSmall = t.titleSmall.copy(fontFamily = Inter),
         bodyLarge = t.bodyLarge.copy(fontFamily = Inter), bodyMedium = t.bodyMedium.copy(fontFamily = Inter), bodySmall = t.bodySmall.copy(fontFamily = Inter),
         labelLarge = t.labelLarge.copy(fontFamily = Inter), labelMedium = t.labelMedium.copy(fontFamily = Inter), labelSmall = t.labelSmall.copy(fontFamily = Inter))
+}
+
+// The starting theme can be restored during Activity recreation. Keep the
+// window behind Compose in sync too, including areas reserved for system bars.
+@Suppress("DEPRECATION")
+private fun applyAppWindow(activity: android.app.Activity, view: android.view.View, background: android.graphics.drawable.Drawable, darkIcons: Boolean) {
+    val window = activity.window
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    window.setBackgroundDrawable(background)
+    window.statusBarColor = android.graphics.Color.TRANSPARENT
+    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+    if (android.os.Build.VERSION.SDK_INT >= 28) window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+        window.isStatusBarContrastEnforced = false
+        window.isNavigationBarContrastEnforced = false
+    }
+    WindowCompat.getInsetsController(window, view).apply {
+        isAppearanceLightStatusBars = darkIcons
+        isAppearanceLightNavigationBars = darkIcons
+    }
 }
 
 @Composable private fun Splash(modifier: Modifier = Modifier, onReady: () -> Unit) {

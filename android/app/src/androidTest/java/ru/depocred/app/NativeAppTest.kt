@@ -327,6 +327,19 @@ class NativeAppTest {
         PdfReport.create(rule.activity, SavedCalculation(mode = "direct", result = Finance.loan(LoanInput(750000.0, 12.0, 60, 2500.0, 1.5))), "emerald").copyTo(File(rule.activity.filesDir, "qa/loan-sample.pdf"), overwrite = true)
         PdfReport.create(rule.activity, SavedCalculation(mode = "reverse", result = Finance.deposit(DepositInput(250000.0, 13.5, 37, 7500.0, "weekly", "quarterly"))), "violet").copyTo(File(rule.activity.filesDir, "qa/deposit-sample.pdf"), overwrite = true)
     }
+    private fun workingSystemBars(dark: Boolean) {
+        rule.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        android.os.SystemClock.sleep(250)
+        rule.waitForIdle()
+        val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        for ((x, y) in listOf(bitmap.width / 2 to 6, bitmap.width / 4 to bitmap.height - 6)) {
+            val pixel = bitmap.getPixel(x, y)
+            val channels = listOf(android.graphics.Color.red(pixel), android.graphics.Color.green(pixel), android.graphics.Color.blue(pixel))
+            assertTrue("System bar must follow ${if (dark) "dark" else "light"} theme: $channels", if (dark) channels.max() < 140 else channels.min() > 180)
+        }
+        bitmap.recycle()
+    }
     @Test fun fiveMenuTabsAndThreeHistoryFiltersPreserveCalculationsAndPreferences() {
         val freshDirectory = File(rule.activity.cacheDir, "fresh-defaults-${System.nanoTime()}").apply { mkdirs() }
         val fresh = LocalStore(freshDirectory).read()
@@ -359,6 +372,7 @@ class NativeAppTest {
         rule.activityRule.scenario.recreate()
         rule.onNodeWithTag("tab_leasing").assertIsSelected()
         rule.onNodeWithTag("leasing_placeholder").assertIsDisplayed()
+        workingSystemBars(false)
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("tab_history").performClick()
         rule.mainClock.advanceTimeBy(96)
@@ -391,7 +405,11 @@ class NativeAppTest {
         rule.onNodeWithTag("history_entry_deposit").assertExists()
         rule.onNodeWithTag("history_entry_loan").assertExists()
         rule.runOnIdle { model.settings(Settings("dark", "violet")) }
+        workingSystemBars(true)
         screenshot("37-menu-dark-violet")
+        rule.activityRule.scenario.recreate()
+        workingSystemBars(true)
+        screenshot("39-dark-theme-after-recreation")
     }
     @Test fun settingsAndLocalStoreSurviveReload() {
         rule.onNodeWithTag("tab_info").performClick()
