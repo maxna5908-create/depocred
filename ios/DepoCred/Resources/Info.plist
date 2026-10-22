@@ -14,7 +14,7 @@
   <key>ITSAppUsesNonExemptEncryption</key><false/>
   <key>AppStoreID</key><string>$(DEPOCRED_APP_STORE_ID)</string>
   <key>UIAppFonts</key><array><string>inter.ttf</string></array>
-  <key>UILaunchScreen</key><dict><key>UIColorName</key><string>StartupOrange</string><key>UIImageName</key><string>lucide_coins</string><key>UIImageRespectsSafeAreaInsets</key><false/></dict>
+  <key>UILaunchScreen</key><dict><key>UIColorName</key><string>StartupOrange</string><key>UIImageName</key><string>StartupLogo</string><key>UIImageRespectsSafeAreaInsets</key><false/></dict>
   <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
   <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
   <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

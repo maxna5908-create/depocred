@@ -10,7 +10,7 @@ def rank(item):
     runtime, device = item
     version = tuple(int(v) for v in runtime.split('iOS-')[-1].split('-'))
     name = device['name']
-    return (version, ('Pro Max' in name if kind == 'phone' else 'Pro' in name and '13' in name), name)
+    return (version, ('Pro' in name and 'Max' not in name if kind == 'phone' else 'Pro' in name and '13' in name), name)
 if not candidates:
     raise SystemExit('No available iOS simulator. Install an iOS runtime in Xcode.')
 runtime, selected = max(candidates, key=rank)

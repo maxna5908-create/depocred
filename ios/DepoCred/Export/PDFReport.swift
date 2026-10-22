@@ -57,7 +57,7 @@ private final class PDFWriter {
     }
     @discardableResult func draw(_ text: String, x: CGFloat, top: CGFloat, width: CGFloat, size: CGFloat = 10, bold: Bool = false, color: UIColor? = nil) -> CGFloat {
         let attrs = attributes(size, bold: bold, color: color)
-        let measured = (text as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        let measured = (text as NSString).boundingRect(with: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
         (text as NSString).draw(in: CGRect(x: x, y: top, width: width, height: ceil(measured.height) + 2), withAttributes: attrs)
         return ceil(measured.height)
     }
@@ -78,13 +78,13 @@ private final class PDFWriter {
     func ensure(_ height: CGFloat) { if y + height > 782 { newPage() } }
     func paragraph(_ text: String, accentColor: Bool = false) {
         let attrs = attributes(10)
-        let height = (text as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attrs, context: nil).height + 8
+        let height = (text as NSString).boundingRect(with: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attrs, context: nil).height + 8
         ensure(height); y += draw(text, x: margin, top: y, width: width, color: accentColor ? accent : muted) + 12
     }
     func heading(_ title: String) { ensure(32); y += 6; y += draw(title.uppercased(), x: margin, top: y, width: width, size: 11, bold: true, color: accent) + 12 }
     func metric(_ title: String, _ value: String) {
-        let a = (title as NSString).boundingRect(with: CGSize(width: 245, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attributes(10), context: nil).height
-        let b = (value as NSString).boundingRect(with: CGSize(width: 262, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attributes(10, bold: true), context: nil).height
+        let a = (title as NSString).boundingRect(with: CGSize(width: 245, height: CGFloat.greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attributes(10), context: nil).height
+        let b = (value as NSString).boundingRect(with: CGSize(width: 262, height: CGFloat.greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: attributes(10, bold: true), context: nil).height
         let height = max(a, b) + 12
         ensure(height)
         draw(title, x: margin, top: y, width: 245, color: muted)

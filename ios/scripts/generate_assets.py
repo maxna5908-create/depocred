@@ -27,6 +27,11 @@ for source in sorted((ROOT / 'android/app/src/main/res/drawable').glob('lucide_*
     cairosvg.svg2pdf(bytestring=svg.encode(), write_to=str(folder / 'icon.pdf'))
     write_json(folder / 'Contents.json', {'images': [{'filename': 'icon.pdf', 'idiom': 'universal'}], 'info': INFO, 'properties': {'preserves-vector-representation': True, 'template-rendering-intent': 'template'}})
     if source.stem == 'lucide_coins':
+        startup = ASSETS / 'StartupLogo.imageset'
+        startup.mkdir(parents=True, exist_ok=True)
+        startup_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24">{paths}</svg>'
+        cairosvg.svg2pdf(bytestring=startup_svg.encode(), write_to=str(startup / 'startup.pdf'))
+        write_json(startup / 'Contents.json', {'images': [{'filename': 'startup.pdf', 'idiom': 'universal'}], 'info': INFO, 'properties': {'preserves-vector-representation': True, 'template-rendering-intent': 'original'}})
         icon_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 48 48"><rect width="48" height="48" fill="#F59E0B"/><g transform="translate(12 12)">{paths}</g></svg>'
         folder = ASSETS / 'AppIcon.appiconset'
         folder.mkdir(parents=True, exist_ok=True)
