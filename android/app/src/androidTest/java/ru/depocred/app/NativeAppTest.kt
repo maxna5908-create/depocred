@@ -533,6 +533,7 @@ class NativeAppTest {
             assertEquals(UiState().forms, reopened.state.forms)
             assertNull(reopened.state.current)
             assertEquals(session.state.settings, reopened.state.settings)
+            reopened.flush()
             freshModels.clear()
         }
         val temp = File(rule.activity.cacheDir, "store-test").apply { mkdirs() }
@@ -552,8 +553,11 @@ class NativeAppTest {
                 rule.onNodeWithText("Открытые лицензии").performScrollTo()
                 assertTrue(offset() > 0f)
             } else if (tab != "history") {
-                rule.onNodeWithTag("calculate").performScrollTo()
-                assertTrue(offset() > 0f)
+                // Short forms can fit the viewport. Scroll all available content,
+                // including its bottom inset, without assuming a device height.
+                rule.onNodeWithTag("content").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { it(0f, 10000f) }
+                val range = rule.onNodeWithTag("content").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+                assertEquals(range.maxValue(), range.value(), 1f)
             }
         }
         rule.onNodeWithTag("tab_deposit").performClick()
