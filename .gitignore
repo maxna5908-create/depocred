@@ -19,3 +19,19 @@ keystore.properties
 *.aab
 *.apks
 android/captures/
+
+# iOS generated output and private Apple signing material
+ios/DepoCred.xcodeproj/
+ios/DerivedData/
+ios/Config/Version.xcconfig
+*.xcresult/
+*.xcarchive/
+*.ipa
+*.mobileprovision
+*.p8
+*.pfx
+*.csr
+*.cer
+*.pem
+*.key
+ExportOptions.plist

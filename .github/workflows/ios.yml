@@ -1,0 +1,114 @@
+name: Native iOS
+
+on:
+  push:
+    branches: [feature/native-ios]
+    paths: [ios/**, src/lib/version.ts, .github/workflows/ios.yml]
+  pull_request:
+    paths: [ios/**, src/lib/version.ts, .github/workflows/ios.yml]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Build signed IPA and upload to App Store Connect / TestFlight
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'ru.depocred.app' }}
+  IOS_APP_STORE_ID: ${{ vars.IOS_APP_STORE_ID }}
+
+jobs:
+  verify:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Xcode project
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          python3 ios/scripts/configure.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec ios/project.yml
+          mkdir -p ios/build
+          xcrun simctl list devices available --json > ios/build/devices.json
+          python3 ios/scripts/select_simulator.py phone >> "$GITHUB_ENV"
+      - name: Build and test on iPhone
+        run: |
+          set -euo pipefail
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
+          xcodebuild test -project ios/DepoCred.xcodeproj -scheme DepoCred -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/DerivedData \
+            -resultBundlePath ios/build/iPhone.xcresult -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/iphone-tests.log
+      - name: Build device archive without signing
+        run: |
+          set -euo pipefail
+          xcodebuild archive -project ios/DepoCred.xcodeproj -scheme DepoCred -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath ios/build/DepoCred-unsigned.xcarchive \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/archive.log
+      - name: Export screenshots and test summary
+        if: always()
+        run: |
+          if [ -d ios/build/iPhone.xcresult ]; then
+            xcrun xcresulttool export attachments --path ios/build/iPhone.xcresult --output-path ios/build/screenshots || true
+            xcrun xcresulttool get test-results summary --path ios/build/iPhone.xcresult > ios/build/test-summary.json || true
+          fi
+          if [ -d ios/DerivedData/Build/Products/Debug-iphonesimulator/DepoCred.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent ios/DerivedData/Build/Products/Debug-iphonesimulator/DepoCred.app ios/build/DepoCred-simulator.zip
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: depocred-ios-verification
+          path: |
+            ios/build/*.log
+            ios/build/*.json
+            ios/build/*.zip
+            ios/build/screenshots/
+            ios/build/iPhone.xcresult/
+            ios/DepoCred.xcodeproj/
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.release
+    needs: verify
+    runs-on: macos-26
+    timeout-minutes: 30
+    environment: app-store
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Xcode project
+        run: |
+          python3 ios/scripts/configure.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec ios/project.yml
+      - name: Sign, archive, export and upload to Apple
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: bash ios/scripts/release.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: depocred-ios-app-store
+          path: |
+            ios/build/export/*.ipa
+            ios/build/DepoCred.xcarchive/dSYMs/
+            ios/build/release-summary.json
+          retention-days: 30

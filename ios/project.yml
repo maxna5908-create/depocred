@@ -1,0 +1,82 @@
+name: DepoCred
+options:
+  bundleIdPrefix: ru.depocred
+  deploymentTarget:
+    iOS: '16.0'
+  xcodeVersion: '26.0'
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+configFiles:
+  Debug: Config/Version.xcconfig
+  Release: Config/Version.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '16.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_EMIT_LOC_STRINGS: NO
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ''
+targets:
+  DepoCred:
+    type: application
+    platform: iOS
+    sources:
+      - path: DepoCred
+        excludes: [Resources/Info.plist]
+      - path: ../android/app/src/main/res/font/inter.ttf
+        buildPhase: resources
+      - path: ../android/app/src/main/assets/Inter-OFL.txt
+        buildPhase: resources
+      - path: ../android/app/src/main/assets/Lucide-LICENSE.txt
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(DEPOCRED_BUNDLE_ID)
+        INFOPLIST_FILE: DepoCred/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        SWIFT_STRICT_CONCURRENCY: targeted
+  DepoCredTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+      - path: ../android/app/src/test/resources/pwa-parity.json
+        buildPhase: resources
+      - path: ../android/app/src/test/resources/pwa-reverse-forms.json
+        buildPhase: resources
+    dependencies:
+      - target: DepoCred
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.depocred.tests
+        GENERATE_INFOPLIST_FILE: YES
+  DepoCredUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: DepoCred
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.depocred.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  DepoCred:
+    build:
+      targets:
+        DepoCred: all
+    test:
+      gatherCoverageData: true
+      targets:
+        - name: DepoCredTests
+          parallelizable: false
+        - name: DepoCredUITests
+          parallelizable: false
+    archive:
+      config: Release
