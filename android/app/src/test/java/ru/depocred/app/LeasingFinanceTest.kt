@@ -123,10 +123,10 @@ class LeasingFinanceTest {
         val deposit = SavedCalculation(mode="direct",result=Finance.deposit(DepositInput(100_000.0,12.0,12)))
         val state = UiState(tab="leasing",leasingReverse=true,current=lease,history=listOf(lease,loan,deposit),
             forms=UiState().forms + ("leasingReverse" to emptyLeasingForm().with("count0","18").with("payment0","456912.86")))
-        assertEquals(state,StateJson.decode(StateJson.encode(state)))
+        assertEquals(UiState(settings=state.settings,history=state.history),StateJson.decode(StateJson.encode(state)))
         assertEquals(listOf("leasing","loan","deposit"),state.history.map { it.type })
         val legacy = JSONObject(StateJson.encode(UiState(history=listOf(loan,deposit))))
-        legacy.remove("leasingReverse"); legacy.getJSONObject("forms").remove("leasing"); legacy.getJSONObject("forms").remove("leasingReverse")
+        legacy.put("schema",1); legacy.put("forms",JSONObject())
         val restored = StateJson.decode(legacy.toString())
         assertEquals(listOf(loan,deposit),restored.history)
         assertEquals(emptyLeasingForm(),restored.forms["leasing"])

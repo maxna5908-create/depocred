@@ -175,14 +175,14 @@ class NativeAppTest {
         field("amount", "1000000"); field("rate", "12"); field("term", "12"); field("fixed", "2500"); field("commission", "1.5"); calculate()
         rule.runOnIdle { assertEquals(88848.788678, model.state.current!!.result.firstPayment, .01) }
         screenshot("02-loan-results")
-        rule.onNodeWithContentDescription("Информация: Номинальная ставка").revealAndClick()
+        rule.onNodeWithText("Как рассчитана номинальная ставка").revealAndClick()
         rule.onNodeWithText("ЭКСКУРС").assertIsDisplayed()
         rule.onNodeWithText("J = j / m").assertExists()
         screenshot("07-nominal-info")
         rule.onNodeWithText("12,00% / 12 = 1,0000% в месяц").performScrollTo().assertIsDisplayed()
         screenshot("08-nominal-steps")
         rule.onNodeWithText("ПОНЯТНО").performClick()
-        rule.onNodeWithContentDescription("Информация: Эффективная ставка").revealAndClick()
+        rule.onNodeWithText("Как рассчитана эффективная ставка").revealAndClick()
         rule.onNodeWithText("Prec = Σ [Mk / (1+r)^k]").assertExists()
         screenshot("09-effective-info")
         rule.onNodeWithText("${money(1000000.0)} − ${money(17500.0)} = ${money(982500.0)}").performScrollTo().assertIsDisplayed()
@@ -215,6 +215,9 @@ class NativeAppTest {
         calculate()
         rule.runOnIdle { assertTrue(model.state.current!!.result.finalAmount > 600000) }
         screenshot("04-deposit-results")
+        rule.onNodeWithText("Как рассчитана ставка депозита").revealAndClick()
+        rule.onNodeWithTag("rate_info_deposit").assertExists()
+        rule.onNodeWithText("ПОНЯТНО").performClick()
         rule.onNodeWithText("График начислений").revealAndClick()
         rule.onNode(hasText("ПОПОЛНЕНИЯ") and hasAnyAncestor(isDialog())).assertIsDisplayed()
         rule.onNodeWithText("% ЗА ПЕРИОД").assertExists()
@@ -442,10 +445,17 @@ class NativeAppTest {
             assertEquals(20.48352330511784,model.state.current!!.result.nominalRate,1e-8)
             model.saveCurrent(); model.clearNotice(); model.flush()
             val restored = LocalStore(rule.activity.filesDir).read()
-            assertEquals(model.state.current,restored.current)
+            assertNull(restored.current)
+            assertEquals(model.state.current!!.result,restored.history.first().result)
+            assertEquals(UiState().forms,restored.forms)
             assertEquals("leasing",restored.history.first().type)
         }
         screenshot("40-leasing-reverse-result")
+        rule.onNodeWithText("Сохранить PDF").performScrollTo()
+        val pdfButton = rule.onNodeWithText("Сохранить PDF").fetchSemanticsNode().boundsInRoot
+        val resultCard = rule.onNodeWithTag("lease_result").fetchSemanticsNode().boundsInRoot
+        assertEquals(resultCard.width - 48 * rule.activity.resources.displayMetrics.density, pdfButton.width, 2f)
+        screenshot("44-leasing-full-width-pdf")
         rule.onNodeWithText("Как рассчитана ставка").revealAndClick()
         rule.onNodeWithText("Ставка лизинга").assertIsDisplayed()
         screenshot("41-leasing-rate-info")
@@ -495,7 +505,7 @@ class NativeAppTest {
         val long = PdfReport.create(rule.activity,SavedCalculation(mode="reverse",result=LeasingFinance.reverse(input.copy(groups=listOf(LeasePaymentGroup(998,10000.0))))),"violet")
         PdfRenderer(ParcelFileDescriptor.open(long,ParcelFileDescriptor.MODE_READ_ONLY)).use { assertTrue(it.pageCount>30) }
     }
-    @Test fun settingsAndLocalStoreSurviveReload() {
+    @Test fun settingsAndHistorySurviveClosingButDraftsOnlySurviveTheCurrentSession() {
         rule.onNodeWithTag("tab_info").performClick()
         screenshot("14-info-light")
         rule.onNodeWithText("Темная").revealAndClick()
@@ -507,7 +517,23 @@ class NativeAppTest {
             model.edit("amount", "123456"); model.flush()
             val restored = LocalStore(rule.activity.filesDir).read()
             assertEquals("dark", restored.settings.theme); assertEquals("violet", restored.settings.skin)
-            assertEquals("123456", restored.forms.getValue("loan").text("amount"))
+            assertEquals(UiState().forms, restored.forms)
+        }
+        val session = model
+        rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        rule.runOnIdle { assertSame(session, model); assertEquals("123456", model.state.form.text("amount")) }
+        rule.activityRule.scenario.recreate()
+        rule.runOnIdle { assertSame(session, model); assertEquals("123456", model.state.form.text("amount")) }
+        // A fresh ViewModel models a new Activity/task after termination, not a recreation.
+        val freshModels = androidx.lifecycle.ViewModelStore()
+        rule.runOnIdle {
+            val reopened = ViewModelProvider(freshModels, ViewModelProvider.AndroidViewModelFactory.getInstance(rule.activity.application))[AppViewModel::class.java]
+            assertEquals("deposit", reopened.state.tab)
+            assertEquals(UiState().forms, reopened.state.forms)
+            assertNull(reopened.state.current)
+            assertEquals(session.state.settings, reopened.state.settings)
+            freshModels.clear()
         }
         val temp = File(rule.activity.cacheDir, "store-test").apply { mkdirs() }
         val corrupt = File(temp, "depocred-state.json"); corrupt.writeText("{incomplete")
@@ -515,5 +541,49 @@ class NativeAppTest {
         store.read()
         assertNotNull(store.recoveryNotice)
         assertTrue(temp.listFiles()!!.any { it.name.startsWith("depocred-recovery-") && it.readText() == "{incomplete" })
+    }
+    @Test fun changingToolsStartsAtTheTopOnTheFirstFrame() {
+        fun offset() = rule.onNodeWithTag("content").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+        val tabs = listOf("info", "leasing", "loan", "deposit", "history", "info")
+        for (tab in tabs) {
+            rule.onNodeWithTag("tab_$tab").performClick()
+            assertEquals("The first layout of $tab must start at zero", 0f, offset(), 0f)
+            if (tab == "info") {
+                rule.onNodeWithText("Открытые лицензии").performScrollTo()
+                assertTrue(offset() > 0f)
+            } else if (tab != "history") {
+                rule.onNodeWithTag("calculate").performScrollTo()
+                assertTrue(offset() > 0f)
+            }
+        }
+        rule.onNodeWithTag("tab_deposit").performClick()
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.onNodeWithTag("tab_info").performClick()
+            repeat(5) {
+                rule.mainClock.advanceTimeByFrame()
+                assertEquals("Returning to Info must not animate an old offset", 0f, offset(), 0f)
+            }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNodeWithText("Настройки").assertIsDisplayed()
+        screenshot("45-info-return-at-top")
+    }
+    @Test fun pendingStorageAlwaysKeepsTheLatestSnapshotAndInputDoesNotWriteToDisk() {
+        val temp = File(rule.activity.cacheDir, "latest-store-${System.nanoTime()}").apply { mkdirs() }
+        val store = LocalStore(temp)
+        val old = UiState(settings = Settings("dark", "rose"))
+        val latest = UiState(settings = Settings("light", "blue"))
+        store.stage(StateJson.encode(old)); store.stage(StateJson.encode(latest))
+        store.flush(); store.flush()
+        assertEquals(latest, store.read())
+        rule.runOnIdle { model.flush(); model.clearNotice() }
+        val file = File(rule.activity.filesDir, "depocred-state.json")
+        val bytes = file.readBytes()
+        rule.runOnIdle {
+            for (n in 1..100) model.edit("amount", n.toString())
+            model.flush()
+            assertNull(model.notice)
+        }
+        assertArrayEquals(bytes, file.readBytes())
     }
 }

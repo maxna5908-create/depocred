@@ -127,7 +127,7 @@ import androidx.core.view.WindowCompat
         Text("Эквивалент кредита, годовых", color = p.muted, fontSize = 13.sp)
         Text(percent(c.nominalRate), fontSize = 36.sp, fontWeight = FontWeight.Bold, color = p.text)
         Metric("Эффективная годовая ставка", percent(c.effectiveRate), accent = true) { info = true }
-        Action("Как рассчитана ставка", primary = false) { info = true }
+        CalculationInfoLink("Как рассчитана ставка") { info = true }
         Line()
         if (entry.mode != "reverse") {
             val lastRegular = i.firstMonth + i.count - 1
@@ -146,7 +146,7 @@ import androidx.core.view.WindowCompat
             if (onSave != null) SmallButton(R.drawable.lucide_save, "Сохранить расчёт", onSave)
             SmallButton(R.drawable.lucide_share_2, "Отправить PDF") { onExport(entry, false) }
         }
-        Action("Сохранить PDF", icon = R.drawable.lucide_download, primary = false) { onExport(entry, true) }
+        Action("Сохранить PDF", Modifier.fillMaxWidth(), icon = R.drawable.lucide_download, primary = false) { onExport(entry, true) }
     }
     if (info) AppDialog("Ставка лизинга", { info = false }, confirm = "ЗАКРЫТЬ") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -186,7 +186,7 @@ import androidx.core.view.WindowCompat
                     }
                 }
             }
-            Action("Сохранить PDF", icon = R.drawable.lucide_download) { onExport(entry, true) }
+            Action("Сохранить PDF", Modifier.fillMaxWidth(), icon = R.drawable.lucide_download) { onExport(entry, true) }
         }
     }
 }

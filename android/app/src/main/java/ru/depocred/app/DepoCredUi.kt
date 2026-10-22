@@ -136,7 +136,9 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
             var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
             val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
             val scope = rememberCoroutineScope()
-            val scroll = key(state.tab) { rememberScrollState() }
+            // A tool visit starts at zero before its first layout. Do not restore a
+            // previous tool's saved offset or animate a reset after displaying it.
+            val scroll = remember(state.tab) { ScrollState(0) }
             val backdrop = rememberGraphicsLayer()
             var backdropOrigin by remember { mutableStateOf(Offset.Zero) }
             val focus = LocalFocusManager.current
@@ -540,6 +542,14 @@ private val NumberGrouping = VisualTransformation { input ->
 }
 @Composable internal fun Line() { HorizontalDivider(color = if (LocalPalette.current.dark) Color.White.copy(alpha = .1f) else Color.Black.copy(alpha = .05f)) }
 
+@Composable internal fun CalculationInfoLink(text: String, onClick: () -> Unit) {
+    Text(text, color = LocalPalette.current.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClick = onClick).wrapContentHeight().padding(vertical = 8.dp))
+}
+
 @Composable private fun CalculationResult(entry: SavedCalculation, paymentType: String, onPaymentType: (String) -> Unit, onSave: (() -> Unit)? = null, onSchedule: () -> Unit, onExport: (SavedCalculation, Boolean) -> Unit, onDelete: (() -> Unit)? = null) {
     val p = LocalPalette.current
     val c = entry.result
@@ -576,6 +586,8 @@ private val NumberGrouping = VisualTransformation { input ->
                 }
                 Line()
                 Text("Переплата по кредиту составит ${percent(c.totalInterest / (l.amount - l.downPayment) * 100)} от суммы кредита.", color = p.primary, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+                CalculationInfoLink("Как рассчитана номинальная ставка") { rateInfo = "nominal" }
+                CalculationInfoLink("Как рассчитана эффективная ставка") { rateInfo = "effective" }
             } else {
                 val d = c.deposit!!
                 MetricPair("Депозит" to money(d.initialAmount), "Ставка / Срок" to "${percent(d.rate)} | ${d.term} мес.")
@@ -583,6 +595,7 @@ private val NumberGrouping = VisualTransformation { input ->
                 Metric("Эффективная годовая ставка", percent(c.effectiveRate), accent = true) { rateInfo = "deposit" }
                 Line()
                 Text("Доходность с учетом сложного процента составит ${percent(if (d.initialAmount + c.totalAdditions > 0) c.totalInterest / (d.initialAmount + c.totalAdditions) * 100 else 0.0)} за весь период.", color = p.primary, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+                CalculationInfoLink("Как рассчитана ставка депозита") { rateInfo = "deposit" }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Action(if (c.isLoan) "График платежей" else "График начислений", Modifier.weight(1f), onClick = onSchedule)
@@ -802,7 +815,7 @@ private val NumberGrouping = VisualTransformation { input ->
     }
     Text("ВЕРСИЯ ${BuildConfig.VERSION_NAME}\n\n• • •\n\nСделано с ❤️ для вашей финансовой свободы", color = p.muted, fontSize = 10.sp, lineHeight = 16.sp, letterSpacing = 1.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     if (privacy) AppDialog("Конфиденциальность", { privacy = false }, confirm = "ЗАКРЫТЬ") {
-        Text("DepoCred работает без подключения к интернету, не содержит рекламы, аналитики и регистрации. Параметры, настройки и последние 10 сохранённых расчётов находятся только в памяти приложения на устройстве.\n\nPDF передаётся другому приложению только после вашего действия. Получатель получает временный доступ к выбранному файлу.\n\nОбновление с той же подписью сохраняет данные. Удаление приложения или очистка его данных удаляет локальную историю. Сохранённые вами во внешнюю папку PDF остаются в этой папке.\n\nКонтакт: support@depocred.ru", color = p.muted, fontSize = 14.sp, lineHeight = 22.sp)
+        Text("DepoCred работает без подключения к интернету, не содержит рекламы, аналитики и регистрации. Настройки и последние 10 явно сохранённых расчётов находятся во внутреннем хранилище устройства. Введённые поля сохраняются при сворачивании, но очищаются после полного закрытия приложения.\n\nPDF передаётся другому приложению только после вашего действия. Получатель получает временный доступ к выбранному файлу.\n\nОбновление с той же подписью сохраняет данные. Удаление приложения или очистка его данных удаляет локальную историю. Сохранённые вами во внешнюю папку PDF остаются в этой папке.\n\nКонтакт: support@depocred.ru", color = p.muted, fontSize = 14.sp, lineHeight = 22.sp)
     }
     if (licenses) {
         val text = remember { listOf("Third-party-notices.txt", "Inter-OFL.txt", "Lucide-LICENSE.txt", "Apache-2.0.txt").joinToString("\n\n") { file -> context.assets.open(file).bufferedReader().use { it.readText() } } }

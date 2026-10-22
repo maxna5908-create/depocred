@@ -98,12 +98,24 @@ class FinanceTest {
             { Finance.depositMissing(DepositInput(100000.0, 0.0, 12, 10000.0, additionPeriod = "monthly"), 100001.0, "rate") }
         ).forEach { calculation -> assertThrows(IllegalArgumentException::class.java) { calculation() } }
     }
-    @Test fun jsonRoundTripPreservesHistoryAndSessionsExactly() {
+    @Test fun jsonRoundTripPreservesHistoryAndPreferencesButNotDrafts() {
         val c = Finance.loan(LoanInput(500000.0, 15.0, 36, 500.0, 1.0))
         val entry = SavedCalculation(mode = "direct", result = c)
         val state = UiState(settings = Settings("dark", "rose", false), current = entry, history = listOf(entry), forms = UiState().forms + ("loan" to Form(mapOf("amount" to "12345.67", "rate" to "0", "paymentType" to "annuity"))))
-        assertEquals(state, StateJson.decode(StateJson.encode(state)))
+        val raw = StateJson.encode(state)
+        assertEquals(UiState(settings = state.settings, history = state.history), StateJson.decode(raw))
+        val json = JSONObject(raw)
+        listOf("forms", "current", "tab", "loanReverse", "depositReverse", "leasingReverse").forEach { assertFalse(json.has(it)) }
         val encoded = StateJson.calculation(Finance.deposit(DepositInput(50000.0, 8.0, 12)))
         assertEquals(encoded.toString(), StateJson.calculation(StateJson.calculation(encoded)).toString())
+    }
+    @Test fun upgradeDiscardsEvenInvalidLegacyDraftsWithoutLosingSavedHistory() {
+        val entry = SavedCalculation(mode = "direct", result = Finance.deposit(DepositInput(100000.0, 10.0, 12)))
+        val old = JSONObject(StateJson.encode(UiState(history = listOf(entry), settings = Settings("dark", "violet")))).apply {
+            put("schema", 1); put("tab", "leasing"); put("leasingReverse", true)
+            put("forms", JSONObject().put("deposit", JSONObject().put("fields", JSONObject().put("amount", "999999"))))
+            put("current", JSONObject().put("incomplete", true))
+        }
+        assertEquals(UiState(settings = Settings("dark", "violet"), history = listOf(entry)), StateJson.decode(old.toString()))
     }
 }

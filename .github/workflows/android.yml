@@ -91,7 +91,7 @@ jobs:
             adb shell am instrument -w -r ru.depocred.app.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             adb logcat -d > device-logcat.txt
             adb exec-out run-as ru.depocred.app tar -C files -cf - qa > native-qa.tar
-            grep -q 'OK (12 tests)' instrumentation.txt
+            grep -q 'OK (14 tests)' instrumentation.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

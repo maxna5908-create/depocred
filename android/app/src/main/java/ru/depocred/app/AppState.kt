@@ -88,37 +88,26 @@ object StateJson {
     }
     private fun entry(j: JSONObject) = SavedCalculation(j.getString("id"), j.getLong("timestamp"), j.getString("mode"), calculation(j.getJSONObject("result")))
     fun encode(state: UiState): String = JSONObject().apply {
-        put("schema", 1); put("tab", state.tab); put("loanReverse", state.loanReverse); put("depositReverse", state.depositReverse)
-        put("leasingReverse", state.leasingReverse)
+        // Only explicitly saved calculations and preferences survive a new launch.
+        // Drafts, the selected tool/mode and the current result belong to the ViewModel session.
+        put("schema", 2)
         put("settings", JSONObject().apply { put("theme", state.settings.theme); put("skin", state.settings.skin); put("hints", state.settings.hints) })
-        put("forms", JSONObject().apply { state.forms.forEach { (key, form) -> put(key, JSONObject().apply {
-            put("fields", JSONObject(form.fields)); put("manual", JSONArray(form.manual)); form.target?.let { put("target", it) }
-        }) } })
         put("history", JSONArray().apply { state.history.take(10).forEach { put(entry(it)) } })
-        state.current?.let { put("current", entry(it)) }
     }.toString()
     fun decode(raw: String): UiState {
         val j = JSONObject(raw)
-        require(j.getInt("schema") == 1) { "Неподдерживаемая версия данных" }
+        require(j.getInt("schema") in 1..2) { "Неподдерживаемая версия данных" }
         val s = j.getJSONObject("settings")
-        val forms = UiState().forms.toMutableMap()
-        val f = j.getJSONObject("forms")
-        forms.keys.toList().forEach { key -> f.optJSONObject(key)?.let { x ->
-            val fields = x.getJSONObject("fields")
-            val manual = x.optJSONArray("manual") ?: JSONArray()
-            forms[key] = Form(fields.keys().asSequence().associateWith { fields.getString(it) }, x.optString("target").takeIf { it.isNotBlank() }, (0 until manual.length()).map { manual.getString(it) })
-        } }
         val h = j.getJSONArray("history")
         val entries = (0 until minOf(h.length(), 10)).map { entry(h.getJSONObject(it)) }
-        return UiState(tab = j.optString("tab").takeIf { it in listOf("deposit", "loan", "leasing", "history", "info") } ?: "deposit",
-            settings = Settings(s.optString("theme", "light"), s.optString("skin", "amber"), s.optBoolean("hints", true)),
-            loanReverse = j.optBoolean("loanReverse"), depositReverse = j.optBoolean("depositReverse"), leasingReverse = j.optBoolean("leasingReverse"), forms = forms,
-            current = j.optJSONObject("current")?.let(::entry), history = entries)
+        // Version 1 included drafts: deliberately ignore them when upgrading.
+        return UiState(settings = Settings(s.optString("theme", "light"), s.optString("skin", "amber"), s.optBoolean("hints", true)), history = entries)
     }
 }
 
 class LocalStore(directory: File) {
     private val file = AtomicFile(File(directory, "depocred-state.json"))
+    private var pending: String? = null
     var recoveryNotice: String? = null
         private set
     @Synchronized fun read(): UiState {
@@ -130,9 +119,13 @@ class LocalStore(directory: File) {
             UiState()
         }
     }
-    @Synchronized fun write(raw: String) {
+    @Synchronized fun stage(raw: String) { pending = raw }
+    @Synchronized fun flush() {
+        // An older queued IO job always writes the latest staged snapshot. It cannot
+        // overwrite a newer onStop flush or resurrect a deleted history entry.
+        val raw = pending ?: return
         val stream = file.startWrite()
-        try { stream.write(raw.toByteArray(Charsets.UTF_8)); file.finishWrite(stream) }
+        try { stream.write(raw.toByteArray(Charsets.UTF_8)); file.finishWrite(stream); pending = null }
         catch (e: Exception) { file.failWrite(stream); throw e }
     }
 }
@@ -151,27 +144,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     private var saveJob: Job? = null
     private var calculationJob: Job? = null
+    init {
+        // Also remove legacy on-disk drafts as soon as the updated app starts.
+        persist(immediate = true)
+    }
     fun notify(text: String) { notice = text }
     fun clearNotice() { notice = null }
     private fun persist(immediate: Boolean = false) {
         saveJob?.cancel()
-        val raw = StateJson.encode(state)
+        try { store.stage(StateJson.encode(state)) }
+        catch (_: Exception) { notify("Не удалось подготовить настройки и историю к сохранению."); return }
         saveJob = viewModelScope.launch {
             if (!immediate) delay(250)
-            try { withContext(Dispatchers.IO) { store.write(raw) } }
-            catch (_: Exception) { notify("Не удалось сохранить данные. Проверьте свободное место.") }
+            try { withContext(Dispatchers.IO) { store.flush() } }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { notify("Не удалось записать настройки и историю. Проверьте доступное место и повторите сохранение.") }
         }
     }
     fun flush() {
-        // A short, atomic final write also protects the latest edit on process termination.
+        // Finish pending preferences/history without saving the session's input fields.
         saveJob?.cancel()
-        runCatching { store.write(StateJson.encode(state)) }.onFailure { notify("Не удалось сохранить последние изменения") }
+        runCatching { store.flush() }.onFailure { notify("Не удалось записать настройки и историю. Проверьте доступное место и повторите сохранение.") }
     }
     fun tab(value: String) {
         if (value == state.tab || value !in listOf("deposit", "loan", "leasing", "history", "info")) return
         calculationJob?.cancel()
         state = state.copy(tab = value, current = null, calculating = false)
-        persist()
     }
     fun mode(reverse: Boolean) {
         calculationJob?.cancel()
@@ -180,7 +178,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "leasing" -> state.copy(leasingReverse = reverse, current = null, calculating = false)
             else -> state.copy(depositReverse = reverse, current = null, calculating = false)
         }
-        persist()
     }
     fun settings(value: Settings) { state = state.copy(settings = value); persist() }
     fun edit(key: String, value: String) {
@@ -207,12 +204,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } else if (state.tab == "deposit") form = ReverseForms.deposit(form, key)
         }
         state = state.copy(forms = state.forms + (state.formKey to form), current = null, calculating = false)
-        persist()
     }
     fun reset() {
         calculationJob?.cancel()
         state = state.copy(forms = state.forms + (state.formKey to if (state.tab == "leasing") emptyLeasingForm() else emptyForm(state.tab == "loan", state.reverse)), current = null, calculating = false)
-        persist()
     }
     fun calculate(): Boolean {
         calculationJob?.cancel()
@@ -235,7 +230,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (snapshot.reverse) LeasingFinance.reverse(form.leasing(true)) else LeasingFinance.direct(form.leasing(false))
                     }
                     state = state.copy(current = SavedCalculation(mode = if (snapshot.reverse) "reverse" else "direct", result = result), calculating = false, resultRevision = state.resultRevision + 1)
-                    persist()
                     return@launch
                 }
                 require(form.text("amount").isNotBlank() && form.number("amount") > 0) { "Укажите сумму для расчёта" }
@@ -260,7 +254,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (snapshot.tab == "loan") Finance.loan(form.loan()) else Finance.deposit(form.deposit())
                 }
                 state = state.copy(forms = state.forms + (snapshot.formKey to form), current = SavedCalculation(mode = if (snapshot.reverse) "reverse" else "direct", result = result), calculating = false, resultRevision = state.resultRevision + 1)
-                persist()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { state = state.copy(calculating = false); notify(e.message ?: "Проверьте параметры расчёта") }
         }
@@ -286,7 +279,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val result = withContext(Dispatchers.Default) { Finance.loan(form.loan()) }
                 state = state.copy(current = current.copy(result = result), calculating = false)
-                persist()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { state = state.copy(calculating = false); notify(e.message ?: "Проверьте параметры расчёта") }
         }
