@@ -1,0 +1,16 @@
+name: iOS App Store
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Sign IPA and upload to TestFlight (requires Apple secrets)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  ios:
+    uses: maxna5908-create/depocred/.github/workflows/ios.yml@feature/native-ios
+    with:
+      release: ${{ inputs.release }}
+    secrets: inherit
