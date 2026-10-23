@@ -23,10 +23,14 @@ final class DepoCredUITests: XCTestCase {
             let top = scroll.frame.minY + 35
             let low = min(bottom - 35, scroll.frame.maxY - 35)
             let origin = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
-            let upper = origin.withOffset(CGVector(dx: 0, dy: top - scroll.frame.minY))
-            let lower = origin.withOffset(CGVector(dx: 0, dy: low - scroll.frame.minY))
-            if element.exists && element.frame.minY < scroll.frame.minY { upper.press(forDuration: 0.05, thenDragTo: lower) }
-            else { lower.press(forDuration: 0.05, thenDragTo: upper) }
+            let distance = min((low - top) * 0.6, max(45, abs(element.frame.midY - (top + low) / 2)))
+            let down = element.exists && element.frame.minY < scroll.frame.minY
+            let startY = down ? top : low
+            let endY = down ? top + distance : low - distance
+            let start = origin.withOffset(CGVector(dx: 0, dy: startY - scroll.frame.minY))
+            let end = origin.withOffset(CGVector(dx: 0, dy: endY - scroll.frame.minY))
+            // Hold at the end to stop scroll inertia before inspecting the field again.
+            start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
         }
         XCTFail("Element is not reachable above the keyboard/menu: \(element)")
     }
