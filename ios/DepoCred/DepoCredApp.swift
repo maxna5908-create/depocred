@@ -20,17 +20,20 @@ struct AppRoot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var splash = true
     @State private var keyboard = false
+    @State private var keyboardTop: CGFloat?
     @State private var schedule: SavedCalculation?
     @State private var exported: ExportedFile?
     private var palette: Palette { Palette(dark: model.settings.theme == "dark", primary: skins.first { $0.id == model.settings.skin }?.color ?? skins[2].color) }
     var body: some View {
         NavigationStack {
+            GeometryReader { geometry in
             ZStack {
                 palette.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     AppHeader(tool: model.tool)
                     ToolPage(model: model, keyboard: keyboard, onSchedule: { schedule = $0 }, onExport: export).id(model.tool)
                 }.frame(maxWidth: 800)
+                    .padding(.bottom, keyboardTop.map { max(0, geometry.frame(in: .global).maxY - $0) } ?? 0)
                 if !keyboard {
                     VStack { Spacer(); BottomMenu(selected: model.tool) { model.select($0) }.frame(maxWidth: 752).padding(.horizontal, 12).padding(.bottom, 20) }
                 }
@@ -46,13 +49,22 @@ struct AppRoot: View {
                 }
                 if splash { SplashView { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6)) { splash = false } }.transition(.opacity).zIndex(2) }
             }.toolbar(.hidden, for: .navigationBar)
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboard = true }
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboard = false }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                    guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                    let bounds = geometry.frame(in: .global)
+                    // A floating iPad keyboard must not collapse the whole page.
+                    let docked = frame.width >= bounds.width * 0.9 && frame.minY < bounds.maxY
+                    keyboardTop = docked ? frame.minY : nil
+                    keyboard = frame.minY < bounds.maxY
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboard = false; keyboardTop = nil }
                 .fullScreenCover(item: $schedule) { entry in ScheduleView(entry: entry, onExport: export).environment(\.palette, palette) }
                 .sheet(item: $exported) { file in
                     if file.save { DocumentExporter(url: file.url) }
                     else { ShareSheet(items: [file.url]) }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.ignoresSafeArea(.keyboard, edges: .bottom)
         }.environment(\.palette, palette).preferredColorScheme(splash || palette.dark ? .dark : .light).tint(palette.primary)
     }
     private func export(_ entry: SavedCalculation, _ save: Bool) {

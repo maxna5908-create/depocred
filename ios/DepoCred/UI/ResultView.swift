@@ -17,7 +17,7 @@ struct ResultView: View {
             if let loan = c.loan, entry.mode != "reverse", let onType {
                 AttachedPanel(titles: ["Аннуитетный","Дифференцированный"], selected: loan.paymentType == "annuity" ? 0 : 1, onSelect: { onType($0 == 0 ? "annuity" : "differentiated") }) { details; actions }
             } else { Glass { details; actions } }
-        }.accessibilityIdentifier("calculation_result")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("calculation_result")
             .sheet(isPresented: Binding(get: { explanation != nil }, set: { if !$0 { explanation = nil } })) {
                 RateExplanation(type: explanation ?? "deposit", calculation: c).environment(\.palette, p)
             }

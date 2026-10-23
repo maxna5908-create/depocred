@@ -38,7 +38,8 @@ final class LeasingTests: XCTestCase {
             let reverse = try LeasingFinance.reverse(x)
             XCTAssertEqual(c.rows,reverse.rows); reconcile(c)
         } }
-        XCTAssertEqual(1.01,leaseRound(1.005)); XCTAssertEqual(1234.57,leaseRound(1234.565))
+        XCTAssertEqual(1.01,leaseRound(1.005),accuracy: 1e-10)
+        XCTAssertEqual(1234.57,leaseRound(1234.565),accuracy: 1e-10)
     }
     func testUniformAndDecreasingApplyVATOnceToInterest() throws {
         for type in ["uniform","differentiated"] {

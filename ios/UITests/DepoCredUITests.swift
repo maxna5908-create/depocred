@@ -14,14 +14,19 @@ final class DepoCredUITests: XCTestCase {
     }
     func reveal(_ element: XCUIElement) {
         for _ in 0..<10 {
-            if element.isHittable { return }
-            app.scrollViews.firstMatch.swipeUp()
+            let toolbar = app.toolbars.firstMatch
+            let bottom = app.keyboards.firstMatch.exists && toolbar.exists ? toolbar.frame.minY : app.frame.maxY - 145
+            let scroll = app.scrollViews.firstMatch
+            if element.isHittable && element.frame.minY >= scroll.frame.minY && element.frame.maxY < bottom { return }
+            if element.exists && element.frame.minY < scroll.frame.minY { scroll.swipeDown() }
+            else { scroll.swipeUp() }
         }
         XCTAssertTrue(element.isHittable, "Element is not reachable: \(element)")
     }
     func fill(_ key: String, _ value: String) {
         let field = app.textFields["field_" + key]
         XCTAssertTrue(field.waitForExistence(timeout: 5)); reveal(field); field.tap(); field.typeText(value)
+        XCTAssertEqual(field.value as? String, value.replacingOccurrences(of: ",", with: "."))
     }
     func closeKeyboard() {
         if app.buttons["keyboard_next"].exists {

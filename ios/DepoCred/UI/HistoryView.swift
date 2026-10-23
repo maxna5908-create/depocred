@@ -70,6 +70,7 @@ struct HistoryCard: View {
                 IconButton(icon: "share_2", label: "Отправить PDF") { onExport(entry, false) }
                 IconButton(icon: "trash_2", label: "Удалить расчёт", action: onDelete)
             }
-        }.overlay(alignment: .leading) { Rectangle().fill(accent).frame(width: 4) }.clipShape(RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("history_entry_" + c.type.rawValue)
+        }.overlay(alignment: .leading) { Rectangle().fill(accent).frame(width: 4) }.clipShape(RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .contain).accessibilityIdentifier("history_entry_" + c.type.rawValue)
     }
 }

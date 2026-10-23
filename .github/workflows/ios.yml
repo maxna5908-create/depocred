@@ -1,6 +1,11 @@
 name: Native iOS
 
 on:
+  workflow_call:
+    inputs:
+      release:
+        type: boolean
+        default: false
   push:
     branches: [feature/native-ios]
     paths: [ios/**, src/lib/version.ts, .github/workflows/ios.yml]
@@ -28,10 +33,15 @@ jobs:
   verify:
     runs-on: macos-26
     timeout-minutes: 35
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'feature/native-ios' || github.sha }}
+      - name: Record the exact source revision
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Prepare Xcode project
         run: |
           set -euo pipefail
@@ -91,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'feature/native-ios' || github.sha }}
+          ref: ${{ needs.verify.outputs.source_sha }}
       - name: Prepare Xcode project
         run: |
           python3 ios/scripts/configure.py
