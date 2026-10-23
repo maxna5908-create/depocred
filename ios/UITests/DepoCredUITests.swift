@@ -18,10 +18,17 @@ final class DepoCredUITests: XCTestCase {
             let bottom = app.keyboards.firstMatch.exists && toolbar.exists ? toolbar.frame.minY : app.frame.maxY - 145
             let scroll = app.scrollViews.firstMatch
             if element.isHittable && element.frame.minY >= scroll.frame.minY && element.frame.maxY < bottom { return }
-            if element.exists && element.frame.minY < scroll.frame.minY { scroll.swipeDown() }
-            else { scroll.swipeUp() }
+            // XCUI swipeUp starts near the bottom of the accessibility frame,
+            // which can lie under the keyboard even when the visible scroll area is smaller.
+            let top = scroll.frame.minY + 35
+            let low = min(bottom - 35, scroll.frame.maxY - 35)
+            let origin = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+            let upper = origin.withOffset(CGVector(dx: 0, dy: top - scroll.frame.minY))
+            let lower = origin.withOffset(CGVector(dx: 0, dy: low - scroll.frame.minY))
+            if element.exists && element.frame.minY < scroll.frame.minY { upper.press(forDuration: 0.05, thenDragTo: lower) }
+            else { lower.press(forDuration: 0.05, thenDragTo: upper) }
         }
-        XCTAssertTrue(element.isHittable, "Element is not reachable: \(element)")
+        XCTFail("Element is not reachable above the keyboard/menu: \(element)")
     }
     func fill(_ key: String, _ value: String) {
         let field = app.textFields["field_" + key]
@@ -88,7 +95,7 @@ final class DepoCredUITests: XCTestCase {
         app.buttons["ПОНЯТНО"].tap()
         reveal(app.buttons["open_schedule"]); app.buttons["open_schedule"].tap()
         XCTAssertTrue(app.scrollViews["schedule"].waitForExistence(timeout: 5)); capture("05-loan-schedule")
-        app.buttons["Отправить PDF"].tap()
+        app.buttons["schedule_share_pdf"].tap()
         XCTAssertTrue(app.buttons["Закрыть"].waitForExistence(timeout: 5) || app.otherElements.matching(identifier: "ActivityListView").firstMatch.exists || app.navigationBars.count > 0)
     }
     func testLeasingDirectAndReverse() {

@@ -14,7 +14,7 @@ struct ScheduleView: View {
                 IconButton(icon: "arrow_left", label: "Назад") { dismiss() }
                 Text(c.type == .leasing ? "Платежи лизинга" : c.type == .loan ? "График платежей" : "График начислений")
                     .font(.inter(18, .bold, relativeTo: .headline)).foregroundStyle(p.text).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-                IconButton(icon: "share_2", label: "Отправить PDF") { export(false) }
+                IconButton(icon: "share_2", label: "Отправить PDF") { export(false) }.accessibilityIdentifier("schedule_share_pdf")
             }.padding(16)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
