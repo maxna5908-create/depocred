@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}-${{ github.event_name }}
+  group: ${{ github.event_name == 'workflow_dispatch' && 'ios-release' || format('ios-{0}', github.sha) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
@@ -30,18 +30,40 @@ env:
   IOS_APP_STORE_ID: ${{ vars.IOS_APP_STORE_ID }}
 
 jobs:
-  verify:
-    runs-on: macos-26
-    timeout-minutes: 35
+  source:
+    runs-on: ubuntu-latest
     outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
+      sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'feature/native-ios' || github.sha }}
-      - name: Record the exact source revision
+      - name: Record source revision
         id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Report Apple configuration availability
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: python3 ios/scripts/check_release_config.py --report-only
+  verify:
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [phone, tablet]
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.sha }}
       - name: Prepare Xcode project
         run: |
           set -euo pipefail
@@ -51,8 +73,8 @@ jobs:
           xcodegen generate --spec ios/project.yml
           mkdir -p ios/build
           xcrun simctl list devices available --json > ios/build/devices.json
-          python3 ios/scripts/select_simulator.py phone >> "$GITHUB_ENV"
-      - name: Build and test on iPhone
+          python3 ios/scripts/select_simulator.py ${{ matrix.device }} >> "$GITHUB_ENV"
+      - name: Build and test on ${{ matrix.device }}
         run: |
           set -euo pipefail
           xcrun simctl boot "$SIMULATOR_ID" || true
@@ -61,9 +83,10 @@ jobs:
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
           xcodebuild test -project ios/DepoCred.xcodeproj -scheme DepoCred -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath ios/DerivedData \
-            -resultBundlePath ios/build/iPhone.xcresult -parallel-testing-enabled NO \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/iphone-tests.log
+            -resultBundlePath ios/build/Tests.xcresult -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios/build/tests.log
       - name: Build device archive without signing
+        if: matrix.device == 'phone'
         run: |
           set -euo pipefail
           xcodebuild archive -project ios/DepoCred.xcodeproj -scheme DepoCred -configuration Release \
@@ -72,36 +95,38 @@ jobs:
       - name: Export screenshots and test summary
         if: always()
         run: |
-          if [ -d ios/build/iPhone.xcresult ]; then
-            xcrun xcresulttool export attachments --path ios/build/iPhone.xcresult --output-path ios/build/screenshots || true
-            xcrun xcresulttool get test-results summary --path ios/build/iPhone.xcresult > ios/build/test-summary.json || true
+          if [ -d ios/build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path ios/build/Tests.xcresult --output-path ios/build/screenshots || true
+            xcrun xcresulttool get test-results summary --path ios/build/Tests.xcresult > ios/build/test-summary.json || true
           fi
           if [ -d ios/DerivedData/Build/Products/Debug-iphonesimulator/DepoCred.app ]; then
             ditto -c -k --sequesterRsrc --keepParent ios/DerivedData/Build/Products/Debug-iphonesimulator/DepoCred.app ios/build/DepoCred-simulator.zip
           fi
+          python3 ios/scripts/collect_store_assets.py ios/build/screenshots ios/build/store-assets
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: depocred-ios-verification
+          name: depocred-ios-verification-${{ matrix.device }}
           path: |
             ios/build/*.log
             ios/build/*.json
             ios/build/*.zip
             ios/build/screenshots/
-            ios/build/iPhone.xcresult/
+            ios/build/store-assets/
+            ios/build/Tests.xcresult/
             ios/DepoCred.xcodeproj/
           retention-days: 14
 
   release:
     if: github.event_name == 'workflow_dispatch' && inputs.release
-    needs: verify
+    needs: [source, verify]
     runs-on: macos-26
     timeout-minutes: 30
     environment: app-store
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.verify.outputs.source_sha }}
+          ref: ${{ needs.source.outputs.sha }}
       - name: Prepare Xcode project
         run: |
           python3 ios/scripts/configure.py

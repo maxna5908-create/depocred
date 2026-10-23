@@ -53,6 +53,10 @@ final class StorageAndExportTests: XCTestCase {
             let url = try PDFReport.make(entry,skin: "amber")
             defer { try? FileManager.default.removeItem(at: url) }
             let pdf = try XCTUnwrap(PDFDocument(url: url))
+            let attachment = XCTAttachment(contentsOfFile: url)
+            attachment.name = "report-\(entry.result.type.rawValue)-\(entry.result.rows.count).pdf"
+            attachment.lifetime = .keepAlways
+            add(attachment)
             let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
             XCTAssertTrue(text.contains("DepoCred")); XCTAssertTrue(text.contains("РЕЗУЛЬТАТ")); XCTAssertTrue(text.contains(entry.result.type.title))
             XCTAssertTrue(text.contains(String(entry.result.rows.count)))

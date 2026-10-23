@@ -95,10 +95,10 @@ py ios/scripts/prepare_signing.py package --directory C:\DepoCredSigning --certi
 
 ## 6. Запуск подписанной сборки
 
-1. GitHub → [Actions → Native iOS](https://github.com/maxna5908-create/depocred/actions/workflows/ios.yml).
-2. **Run workflow**, ветка **feature/native-ios**.
+1. GitHub → [Actions → iOS App Store](https://github.com/maxna5908-create/depocred/actions/workflows/ios-release.yml).
+2. **Run workflow**, ветка **main**. Точка запуска находится в основной ветке; она вызывает процесс из `feature/native-ios`. Код приложения берётся из iOS-ветки, её SHA фиксируется до тестов и используется для подписи.
 3. Установите `release = true`, запустите.
-4. Сначала проходят проверки приложения. Затем задача `release` проверяет Team ID, Bundle ID, срок профиля и совпадение сертификата, создаёт подписанный `.ipa` и загружает его в ваш App Store Connect.
+4. Сначала проходят проверки приложения на iPhone и iPad. Затем задача `release` проверяет Team ID, Bundle ID, срок профиля и совпадение сертификата, создаёт подписанный `.ipa` и загружает его в ваш App Store Connect.
 5. После обработки Apple сборка появляется в **TestFlight**. Выберите внутреннюю группу тестировщиков. Для внешних тестировщиков Apple может потребовать Beta App Review.
 6. Файл IPA и отладочные символы сохраняются в артефакте `depocred-ios-app-store` на странице запуска. Неподписанный simulator ZIP нельзя установить на iPhone.
 

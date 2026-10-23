@@ -113,4 +113,25 @@ final class DepoCredUITests: XCTestCase {
         XCTAssertTrue(app.buttons["theme_dark"].isSelected)
         app.buttons["theme_light"].tap(); app.buttons["skin_amber"].tap(); capture("09-settings-light-amber")
     }
+    func testBackgroundKeepsDraftAndAppearanceSurvivesTermination() {
+        fill("amount", "250000"); closeKeyboard()
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertEqual(app.textFields["field_amount"].value as? String, "250000")
+        app.buttons["tab_info"].tap()
+        for theme in ["light", "dark"] {
+            app.buttons["theme_" + theme].tap()
+            for skin in ["emerald", "blue", "amber", "rose", "violet"] {
+                app.buttons["skin_" + skin].tap()
+                XCTAssertTrue(app.buttons["skin_" + skin].isSelected)
+                XCTAssertTrue(app.buttons["theme_" + theme].isSelected)
+            }
+        }
+        app.terminate(); app.launchArguments.removeAll { $0 == "--reset-state" }; app.launch()
+        let ready = NSPredicate(format: "exists == false")
+        expectation(for: ready, evaluatedWith: app.otherElements["startup"]); waitForExpectations(timeout: 15)
+        XCTAssertEqual(app.textFields["field_amount"].value as? String, "")
+        app.buttons["tab_info"].tap()
+        XCTAssertTrue(app.buttons["theme_dark"].isSelected)
+        XCTAssertTrue(app.buttons["skin_violet"].isSelected)
+    }
 }
