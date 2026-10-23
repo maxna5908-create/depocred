@@ -103,6 +103,22 @@ jobs:
             ditto -c -k --sequesterRsrc --keepParent ios/DerivedData/Build/Products/Debug-iphonesimulator/DepoCred.app ios/build/DepoCred-simulator.zip
           fi
           python3 ios/scripts/collect_store_assets.py ios/build/screenshots ios/build/store-assets
+          python3 ios/scripts/report_test_results.py ios/build/test-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: depocred-ios-report-${{ matrix.device }}
+          path: |
+            ios/build/test-summary.json
+            ios/build/tests.log
+            ios/build/archive.log
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: depocred-ios-store-assets-${{ matrix.device }}
+          path: ios/build/store-assets/
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         if: always()
         with:

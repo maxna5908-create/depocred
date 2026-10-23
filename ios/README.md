@@ -28,6 +28,8 @@ Workflow **Native iOS**:
 
 Артефакты `depocred-ios-verification-phone` и `depocred-ios-verification-tablet` содержат логи, результаты XCTest, скриншоты и PDF-примеры (папка `store-assets` с понятными именами), сгенерированный Xcode-проект и приложение для симулятора. Подписанный IPA и dSYM появляются в `depocred-ios-app-store` только после настройки Apple-секретов.
 
+Для быстрой загрузки скриншоты/PDF также выделены в небольшие артефакты `depocred-ios-store-assets-phone` и `depocred-ios-store-assets-tablet`, а результаты тестов/логи — в `depocred-ios-report-phone` и `depocred-ios-report-tablet`. Краткий результат и причины ошибок видны в Summary и Annotations запуска без скачивания полного диагностического архива.
+
 Подготовка Apple-аккаунта: [пошаговая инструкция](docs/apple-setup.md). Тексты карточки: [App Store](store/ru-RU.md). Проверка функций: [чек-лист](docs/verification.md).
 
 ## Структура
