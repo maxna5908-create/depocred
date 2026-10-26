@@ -1,0 +1,148 @@
+name: Android RuStore
+
+on:
+  push:
+    branches: [release/rustore/**]
+    paths: [.github/workflows/android-rustore.yml, android/scripts/publish-rustore.py, android/store/rustore-release.json]
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful Native Android run ID containing signed APK and screenshots
+        required: true
+        type: string
+      resume_version:
+        description: Existing RuStore draft ID to resume (0 creates a new draft)
+        default: '0'
+        type: string
+  workflow_call:
+    inputs:
+      source_run_id:
+        required: true
+        type: string
+      resume_version:
+        default: '0'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: depocred-rustore
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/native-android
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate source build and artifact provenance
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          RESUME_VERSION: ${{ inputs.resume_version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          run_id = os.environ['SOURCE_RUN_ID']
+          resume = os.environ['RESUME_VERSION'] or '0'
+          if os.environ['EVENT_NAME'] == 'push':
+              config = json.loads(Path('android/store/rustore-release.json').read_text())
+              run_id = str(config['source_run_id'])
+              resume = str(config.get('resume_version', 0))
+          if not run_id.isdigit() or not resume.isdigit():
+              raise SystemExit('Run ID and resume version must be numeric')
+          repo = os.environ['GITHUB_REPOSITORY']
+          req = urllib.request.Request(f'https://api.github.com/repos/{repo}/actions/runs/{run_id}', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(req) as response:
+              run = json.load(response)
+          if run['repository']['full_name'] != repo or run['head_repository']['full_name'] != repo:
+              raise SystemExit('Artifacts must come from this repository')
+          if run['status'] != 'completed' or run['conclusion'] != 'success' or run['event'] not in ('push', 'workflow_dispatch'):
+              raise SystemExit('Source build must be successful and cannot originate from a pull request')
+          if run['path'] not in ('.github/workflows/android.yml', '.github/workflows/android-google-play.yml'):
+              raise SystemExit('Unexpected source workflow')
+          branch = run['head_branch']
+          if branch not in ('feature/native-android', 'main') and not branch.startswith(('release/google-play/', 'release/rustore/')):
+              raise SystemExit('Unexpected source branch')
+          # Native Android artifacts are tied to a resolved commit. For the main launcher,
+          # use a direct native-branch run instead, avoiding ambiguous moving source_ref.
+          if run['path'] != '.github/workflows/android.yml':
+              raise SystemExit('Use a direct Native Android run from feature/native-android or a release branch')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"run_id={run_id}\nsha={run['head_sha']}\nresume={resume}\n")
+          print(f"Validated successful build {run_id}, commit {run['head_sha']}")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: release-source
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: depocred-signed-android
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: signed
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: play-creatives-*
+          merge-multiple: true
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: creatives
+      - name: Verify package, version and release signing certificate
+        id: apk
+        run: |
+          set -euo pipefail
+          apk=signed/apk/release/app-release.apk
+          tools_dir=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$tools_dir/apksigner" verify --print-certs "$apk" > apk-certificate.txt
+          expected=027a5d3f0040a1dc7a521d34795881ff66ae49de32797a0a0d305e97393008c4
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apk-certificate.txt)
+          test "$actual" = "$expected"
+          "$tools_dir/aapt" dump badging "$apk" > apk-badging.txt
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          badging = Path('apk-badging.txt').read_text()
+          match = re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging)
+          expected = int(re.search(r'BUILD_VERSION\s*=\s*(\d+)', Path('release-source/src/lib/version.ts').read_text()).group(1))
+          if not match or match[1] != 'ru.depocred.app' or int(match[2]) != expected or match[3] != f'1.0.{expected}':
+              raise SystemExit('APK does not match the selected source commit')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version_code={expected}\n')
+          print(f'Verified signed ru.depocred.app 1.0.{expected}')
+          PY
+      - name: Install publishing dependencies
+        run: python -m pip install requests==2.32.5 cryptography==46.0.3 Pillow==11.3.0
+      - name: Publish APK and store listing to RuStore moderation
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          VERSION_CODE: ${{ steps.apk.outputs.version_code }}
+          RESUME_VERSION: ${{ steps.source.outputs.resume }}
+        run: |
+          python android/scripts/publish-rustore.py \
+            --apk signed/apk/release/app-release.apk \
+            --metadata release-source/android/store/metadata/ru-RU \
+            --images creatives --version-code "$VERSION_CODE" --resume-version "$RESUME_VERSION"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rustore-publication
+          path: |
+            rustore-result.json
+            rustore-images/
+            apk-certificate.txt
+          retention-days: 30
