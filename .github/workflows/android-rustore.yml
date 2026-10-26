@@ -1,0 +1,22 @@
+name: Publish Android to RuStore
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful Native Android run ID with signed APK and screenshots
+        required: true
+        type: string
+      resume_version:
+        description: Existing RuStore draft ID to resume (0 creates new draft)
+        default: '0'
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  rustore:
+    uses: maxna5908-create/depocred/.github/workflows/android-rustore.yml@feature/native-android
+    with:
+      source_run_id: ${{ inputs.source_run_id }}
+      resume_version: ${{ inputs.resume_version }}
+    secrets: inherit
