@@ -170,9 +170,23 @@ def publish(args):
     else:
         api.upload(f'{prefix}/{version}/apk?isMainApk=true&servicesType=Unknown', args.apk, 'application/vnd.android.package-archive')
         print('Signed APK accepted by RuStore', flush=True)
-    for index, kind, file in images:
-        api.upload(f'/public/v2/application/{PACKAGE}/version/{version}/image/screenshot/PORTRAIT/{index}/{kind}', file, 'image/jpeg')
-        print(f'Uploaded {kind} {index + 1}/8', flush=True)
+    def screenshot_state():
+        state = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}/image/screenshot', params={'size': 100, 'page': 0})
+        print('Stored screenshots: ' + json.dumps([{k: item.get(k) for k in ('id', 'ordinal', 'type', 'orientation')} for item in state['content']], ensure_ascii=False), flush=True)
+        return state['content']
+    screenshot_state()
+    for index, kind, file in sorted(images, key=lambda image: image[1] == 'SCREENSHOT'):
+        # Use the established phone endpoint; v2 is required for tablet screenshots.
+        if kind == 'SCREENSHOT':
+            endpoint = f'{prefix}/{version}/image/screenshot/PORTRAIT/{index}'
+        else:
+            endpoint = f'/public/v2/application/{PACKAGE}/version/{version}/image/screenshot/PORTRAIT/{index}/{kind}'
+        uploaded = api.upload(endpoint, file, 'image/jpeg')
+        print(f'Uploaded {kind} {index + 1}/8: ' + json.dumps({k: uploaded.get(k) for k in ('id', 'ordinal', 'type')} if isinstance(uploaded, dict) else uploaded), flush=True)
+    stored = screenshot_state()
+    counts = {kind: sum(item.get('type') == kind for item in stored) for kind in ('SCREENSHOT', 'TABLET_SCREENSHOT')}
+    if any(count < 8 for count in counts.values()):
+        raise RuntimeError('RuStore screenshot persistence check failed: ' + str(counts))
     draft = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}')
     for key in ('appName', 'shortDescription', 'fullDescription', 'publishType'):
         if draft.get(key) != payload[key]:
