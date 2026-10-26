@@ -13,19 +13,90 @@ on:
         type: boolean
         default: false
 
+      publish:
+        description: Upload AAB to Google Play
+        type: boolean
+        default: false
+      track:
+        description: Google Play track
+        type: string
+        default: production
+      status:
+        description: Release status (draft or completed)
+        type: string
+        default: completed
+      submit_review:
+        description: Send changes for review (completed only)
+        type: boolean
+        default: true
+      source_ref:
+        description: Android source branch or commit
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      release:
+        type: boolean
+        default: false
+      publish:
+        description: Upload AAB to Google Play
+        type: boolean
+        default: false
+      track:
+        description: Google Play track
+        type: string
+        default: production
+      status:
+        description: Release status (draft or completed)
+        type: string
+        default: completed
+      submit_review:
+        description: Send changes for review (completed only)
+        type: boolean
+        default: true
+      source_ref:
+        description: Android source branch or commit
+        type: string
+        default: ''
+
 permissions:
   contents: read
 
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Validate publication options
+        env:
+          TRACK: ${{ inputs.track || 'internal' }}
+          STATUS: ${{ inputs.status || 'draft' }}
+          SUBMIT: ${{ inputs.submit_review }}
+        run: |
+          case "$TRACK" in internal|alpha|beta|production) ;; *) exit 1;; esac
+          case "$STATUS" in draft|completed) ;; *) exit 1;; esac
+          if [ "$SUBMIT" = true ] && [ "$STATUS" != completed ]; then
+            echo 'Review submission requires status=completed.'; exit 1
+          fi
+
   verify:
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -49,11 +120,13 @@ jobs:
           retention-days: 14
 
   device:
-    needs: verify
+    needs: [resolve, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -103,12 +176,14 @@ jobs:
           retention-days: 14
 
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.release
-    needs: [verify, device]
+    if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.publish)
+    needs: [resolve, verify, device]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -121,9 +196,12 @@ jobs:
       - name: Restore private signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.DEPOCRED_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DEPOCRED_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.DEPOCRED_KEY_PASSWORD }}
         shell: bash
         run: |
           test -n "$KEYSTORE_BASE64" || { echo 'Configure DEPOCRED signing secrets first.'; exit 1; }
+          test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" || { echo 'Configure both signing password secrets.'; exit 1; }
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/depocred.jks"
       - name: Signed APK and AAB
@@ -145,3 +223,161 @@ jobs:
       - name: Remove private signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/depocred.jks"
+
+  google-play:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: [resolve, release, store-capture]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: depocred-google-play
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: depocred-signed-android
+          path: signed
+      - name: Check Google Play credentials
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python - <<'PY'
+          import json, os
+          data = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
+          assert data.get("type") == "service_account", "Expected a service account JSON"
+          assert data.get("client_email") and data.get("private_key"), "Incomplete service account JSON"
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: play-creatives-*
+          path: generated-store
+          merge-multiple: true
+      - name: Assemble complete store metadata
+        run: |
+          cp -R android/store/metadata/. generated-store/
+          test "$(find generated-store/ru-RU/images/phoneScreenshots -name '*.jpg' | wc -l)" -eq 8
+          test "$(find generated-store/ru-RU/images/sevenInchScreenshots -name '*.jpg' | wc -l)" -eq 8
+          test "$(find generated-store/ru-RU/images/tenInchScreenshots -name '*.jpg' | wc -l)" -eq 8
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Install publication tool
+        run: gem install fastlane -v 2.241.1 --no-document
+      - name: Upload bundle, description and all screenshots
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          TRACK: ${{ inputs.track }}
+          STATUS: ${{ inputs.status }}
+          DEFER_REVIEW: ${{ !inputs.submit_review }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+          FASTLANE_OPT_OUT_USAGE: '1'
+        run: |
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/google-play-service-account.json"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          printf '%s' "$SERVICE_ACCOUNT_JSON" > "$KEY_FILE"
+          fastlane supply --package_name ru.depocred.app \
+            --json_key "$KEY_FILE" \
+            --aab signed/bundle/release/app-release.aab \
+            --mapping signed/mapping/release/mapping.txt \
+            --metadata_path generated-store \
+            --track "$TRACK" --release_status "$STATUS" \
+            --changes_not_sent_for_review "$DEFER_REVIEW" \
+            --rescue_changes_not_sent_for_review false
+      - name: Publication summary
+        env:
+          TRACK: ${{ inputs.track }}
+          STATUS: ${{ inputs.status }}
+          SUBMIT: ${{ inputs.submit_review }}
+          SOURCE: ${{ needs.resolve.outputs.sha }}
+        run: |
+          {
+            echo "### Google Play upload"
+            echo "Package: ru.depocred.app"
+            echo "Source: $SOURCE"
+            echo "Track: $TRACK; status: $STATUS; send for review: $SUBMIT"
+            echo "Google Play review and availability must be checked in Play Console."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  store-capture:
+    needs: [resolve, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: phoneScreenshots
+            size: 1080x2340
+            density: 440
+          - kind: sevenInchScreenshots
+            size: 1200x1920
+            density: 320
+          - kind: tenInchScreenshots
+            size: 1600x2560
+            density: 320
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-verification
+          path: artifacts
+      - name: Enable Android VM acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Capture current Android build on device size
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_5
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -memory 4096 -cores 2
+          script: |
+            adb shell wm size ${{ matrix.size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put global hide_error_dialogs 1
+            adb shell am force-stop com.android.launcher3
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            adb install -t artifacts/outputs/apk/debug/app-debug.apk
+            adb install -t artifacts/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell settings put global animator_duration_scale 1
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            adb shell ime enable com.android.inputmethod.latin/.LatinIME
+            adb shell ime set com.android.inputmethod.latin/.LatinIME
+            adb shell am instrument -w -r -e class 'ru.depocred.app.NativeAppTest#loanCalculationHistoryScheduleAndRecreation,ru.depocred.app.NativeAppTest#depositOptionsAndReverseParameters,ru.depocred.app.NativeAppTest#fiveMenuTabsAndThreeHistoryFiltersPreserveCalculationsAndPreferences,ru.depocred.app.NativeAppTest#leasingReverseFormsValidateGroupsAndPreserveCashFlowsAcrossReload,ru.depocred.app.NativeAppTest#settingsAndHistorySurviveClosingButDraftsOnlySurviveTheCurrentSession' ru.depocred.app.test/androidx.test.runner.AndroidJUnitRunner | tee store-instrumentation.txt
+            adb exec-out run-as ru.depocred.app tar -C files -cf - qa > store-native-qa.tar
+            grep -q 'OK (5 tests)' store-instrumentation.txt
+      - name: Render marketing creatives from captured screens
+        run: |
+          python -m pip install Pillow==11.3.0
+          mkdir -p captured
+          tar -xf store-native-qa.tar -C captured
+          python android/scripts/render-play-creatives.py --source captured/qa --kind ${{ matrix.kind }} --output generated-store
+      - uses: actions/upload-artifact@v4
+        with:
+          name: play-creatives-${{ matrix.kind }}
+          path: generated-store/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: play-capture-evidence-${{ matrix.kind }}
+          path: |
+            store-instrumentation.txt
+            store-native-qa.tar
+          retention-days: 14

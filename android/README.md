@@ -137,3 +137,6 @@ Workflow `Native Android` запускает тесты и сборку в от�
 `DEPOCRED_STORE_PASSWORD`, `DEPOCRED_KEY_PASSWORD`. Приватный файл создаётся
 во временной директории runner и удаляется после сборки. Секреты не являются
 частью исходников и автоматически этой задачей в GitHub не загружаются.
+
+
+Публикация через GitHub: [пошаговая настройка Google Play](docs/github-play-setup.md).
