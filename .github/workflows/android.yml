@@ -2,7 +2,7 @@ name: Native Android
 
 on:
   push:
-    branches: [feature/native-android]
+    branches: [feature/native-android, release/google-play/**]
     paths: [android/**, src/lib/version.ts, .github/workflows/android.yml]
   pull_request:
     paths: [android/**, src/lib/version.ts, .github/workflows/android.yml]
@@ -79,9 +79,9 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Validate publication options
         env:
-          TRACK: ${{ inputs.track || 'internal' }}
-          STATUS: ${{ inputs.status || 'draft' }}
-          SUBMIT: ${{ inputs.submit_review }}
+          TRACK: ${{ inputs.track || 'production' }}
+          STATUS: ${{ inputs.status || 'completed' }}
+          SUBMIT: ${{ github.event_name == 'push' || inputs.submit_review }}
         run: |
           case "$TRACK" in internal|alpha|beta|production) ;; *) exit 1;; esac
           case "$STATUS" in draft|completed) ;; *) exit 1;; esac
@@ -176,7 +176,7 @@ jobs:
           retention-days: 14
 
   release:
-    if: github.event_name == 'workflow_dispatch' && (inputs.release || inputs.publish)
+    if: (github.event_name == 'workflow_dispatch' && (inputs.release || inputs.publish)) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/google-play/'))
     needs: [resolve, verify, device]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -225,7 +225,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/depocred.jks"
 
   google-play:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/google-play/'))
     needs: [resolve, release, store-capture]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -269,9 +269,9 @@ jobs:
       - name: Upload bundle, description and all screenshots
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          TRACK: ${{ inputs.track }}
-          STATUS: ${{ inputs.status }}
-          DEFER_REVIEW: ${{ !inputs.submit_review }}
+          TRACK: ${{ inputs.track || 'production' }}
+          STATUS: ${{ inputs.status || 'completed' }}
+          DEFER_REVIEW: ${{ github.event_name == 'workflow_dispatch' && !inputs.submit_review }}
           FASTLANE_SKIP_UPDATE_CHECK: '1'
           FASTLANE_HIDE_CHANGELOG: '1'
           FASTLANE_OPT_OUT_USAGE: '1'
@@ -290,9 +290,9 @@ jobs:
             --rescue_changes_not_sent_for_review false
       - name: Publication summary
         env:
-          TRACK: ${{ inputs.track }}
-          STATUS: ${{ inputs.status }}
-          SUBMIT: ${{ inputs.submit_review }}
+          TRACK: ${{ inputs.track || 'production' }}
+          STATUS: ${{ inputs.status || 'completed' }}
+          SUBMIT: ${{ github.event_name == 'push' || inputs.submit_review }}
           SOURCE: ${{ needs.resolve.outputs.sha }}
         run: |
           {

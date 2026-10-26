@@ -797,7 +797,7 @@ private val NumberGrouping = VisualTransformation { input ->
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("О приложении", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = p.text, modifier = Modifier.padding(start = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            InfoCard { Text("DepoCred — это современный финансовый инструмент для быстрого расчета кредитных и депозитных условий.", fontSize = 14.sp, lineHeight = 21.sp, color = p.muted) }
+            InfoCard { Text("DepoCred — финансовый инструмент для расчёта кредитов, вкладов и лизинга. Сравнивайте условия, сохраняйте расчёты и создавайте PDF-отчёты.", fontSize = 14.sp, lineHeight = 21.sp, color = p.muted) }
             InfoCard { InfoBlock(R.drawable.lucide_shield, "Конфиденциальность", "Все расчеты хранятся локально на вашем устройстве. Мы не собираем финансовые данные.", Color(0xFF10B981)) }
             InfoCard { InfoBlock(R.drawable.lucide_sparkles, "Умные алгоритмы", "Точные расчеты аннуитетных и дифференцированных платежей, а также сложного банковского процента.", Color(0xFF3B82F6)) }
             InfoCard { InfoBlock(R.drawable.lucide_smartphone, "Платформа", "Полная адаптация под смартфоны. Удобный ввод и наглядная детализация расчетов. Возможность сохранять и делиться расчетами.", Color(0xFF8B5CF6)) }

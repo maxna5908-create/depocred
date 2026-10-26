@@ -336,7 +336,19 @@ class NativeAppTest {
         android.os.SystemClock.sleep(250)
         rule.waitForIdle()
         val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
-        for ((x, y) in listOf(bitmap.width / 2 to 6, bitmap.width / 4 to bitmap.height - 6)) {
+        // On tablets the bottom taskbar belongs to Launcher/System UI and follows
+        // the device theme, independently of our in-app theme. Verify our requested
+        // icon appearance and sample only system-bar backgrounds drawn by the app.
+        rule.runOnIdle {
+            val controller = androidx.core.view.WindowCompat.getInsetsController(rule.activity.window, rule.activity.window.decorView)
+            assertEquals(!dark, controller.isAppearanceLightStatusBars)
+            assertEquals(!dark, controller.isAppearanceLightNavigationBars)
+        }
+        val samples = mutableListOf(bitmap.width / 2 to 6)
+        if (rule.activity.resources.configuration.smallestScreenWidthDp < 600) {
+            samples += bitmap.width / 4 to bitmap.height - 6
+        }
+        for ((x, y) in samples) {
             val pixel = bitmap.getPixel(x, y)
             val channels = listOf(android.graphics.Color.red(pixel), android.graphics.Color.green(pixel), android.graphics.Color.blue(pixel))
             assertTrue("System bar must follow ${if (dark) "dark" else "light"} theme: $channels", if (dark) channels.max() < 140 else channels.min() > 180)

@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
     private fun shareApp() {
         runCatching { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "DepoCred — финансовый калькулятор кредитов и вкладов. https://depocred.ru")
+            putExtra(Intent.EXTRA_TEXT, "DepoCred — финансовый калькулятор кредитов, вкладов и лизинга. https://depocred.ru")
         }, "Поделиться приложением")) }.onFailure { model.notify("Не удалось открыть меню отправки") }
     }
 }
