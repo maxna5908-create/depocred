@@ -1,0 +1,42 @@
+name: Android Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload to Google Play (unchecked = signed files only)
+        type: boolean
+        default: true
+      track:
+        description: Google Play track
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: production
+      status:
+        description: draft = save draft; completed = release ready
+        type: choice
+        options: [draft, completed]
+        default: completed
+      submit_review:
+        description: Send for review (requires completed; production may go live after approval)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: depocred-android-launcher
+  cancel-in-progress: false
+
+jobs:
+  android:
+    uses: maxna5908-create/depocred/.github/workflows/android.yml@feature/native-android
+    with:
+      release: true
+      publish: ${{ inputs.publish }}
+      track: ${{ inputs.track }}
+      status: ${{ inputs.status }}
+      submit_review: ${{ inputs.submit_review }}
+      source_ref: feature/native-android
+    secrets: inherit
