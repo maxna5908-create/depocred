@@ -10,7 +10,7 @@ from pathlib import Path
 directory = Path(os.environ['SIGNING_DIR'])
 profile = plistlib.loads((directory / 'profile.plist').read_bytes())
 team = os.environ['APPLE_TEAM_ID']
-bundle = os.environ.get('IOS_BUNDLE_ID') or 'ru.depocred.app'
+bundle = os.environ.get('IOS_BUNDLE_ID') or 'com.depocred.app'
 entitlements = profile['Entitlements']
 assert team in profile['TeamIdentifier'], 'Profile belongs to another Apple team'
 assert entitlements['application-identifier'].split('.', 1)[1] == bundle, 'Profile Bundle ID does not match IOS_BUNDLE_ID'

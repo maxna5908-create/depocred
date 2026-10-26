@@ -2,21 +2,21 @@
 
 Эти действия выполняются в вашем аккаунте. Пароль Apple ID в репозиторий или чат передавать не нужно. Секреты хранятся в GitHub Actions Secrets; исходники и скриншоты находятся в открытом репозитории.
 
-## 1. Идентификатор приложения
+## 1. Идентификатор существующего приложения
+
+DepoCred выпускается как обновление существующего приложения. Подтверждённый Bundle ID: **`com.depocred.app`**. Созданный отдельно `ru.depocred.app` для этого выпуска не используется.
 
 1. Откройте [Apple Developer Account](https://developer.apple.com/account/).
 2. В Membership details найдите **Team ID** — 10 символов. Сохраните его для пункта 5.
-3. Откройте **Certificates, Identifiers & Profiles → Identifiers → + → App IDs → App**.
-4. Description: `DepoCred`. Bundle ID: **Explicit**, `ru.depocred.app`.
-5. Дополнительные возможности (Push Notifications, iCloud и т. п.) приложению не нужны. Зарегистрируйте идентификатор.
-6. Если `ru.depocred.app` уже занят другой командой, выберите свободный и укажите именно его в переменной `IOS_BUNDLE_ID` в пункте 5. После первой загрузки менять Bundle ID нельзя.
+3. Откройте **Certificates, Identifiers & Profiles → Identifiers** и выберите существующий `com.depocred.app` (App for credit and deposit calculation).
+4. Новый App ID не создавайте. Дополнительные возможности (Push Notifications, iCloud и т. п.) нативной версии не нужны.
 
 ## 2. Карточка в App Store Connect
 
-1. Откройте [App Store Connect](https://appstoreconnect.apple.com/) → **Apps → + → New App**.
-2. Платформа: **iOS**. Название: `DepoCred` (если доступно). Основной язык: **Russian**.
-3. Выберите Bundle ID из пункта 1. SKU: `depocred-ios`. Доступ пользователей — по вашим правилам команды.
-4. Создайте карточку. В **App Information** скопируйте числовой **Apple ID** приложения; это `IOS_APP_STORE_ID`, а не почта вашей учётной записи.
+1. Откройте [существующую карточку DepoCred](https://appstoreconnect.apple.com/apps/6766194530/distribution/info).
+2. В **App Information**: Bundle ID **`com.depocred.app`**, Apple ID **`6766194530`**, SKU `com.depocred.app`.
+3. Сохраните эту карточку: нативная версия загружается в неё как обновление прежней Flutter-версии. Не удаляйте приложение и не создавайте дубликат.
+4. При выборе новой сборки номер версии в карточке должен соответствовать её marketing version. Сохранение локальных данных старой Flutter-версии требует отдельной проверки миграции.
 
 ## 3. Сертификат и профиль подписи
 
@@ -27,7 +27,7 @@
 1. Xcode → Settings → Accounts → ваша команда → Manage Certificates. Создайте Apple Distribution, если его ещё нет.
 2. Keychain Access → My Certificates → Apple Distribution. Экспортируйте сертификат **вместе с private key** в `.p12` и задайте пароль.
 3. Apple Developer → Profiles → **+ → Distribution → App Store Connect**.
-4. Выберите App ID DepoCred и тот же сертификат, назовите профиль `DepoCred App Store`, Generate → Download.
+4. Выберите App ID `com.depocred.app` и тот же сертификат, назовите профиль `DepoCred App Store`, Generate → Download.
 
 Если Mac нет, подготовка возможна на Windows с Python и OpenSSL (OpenSSL есть, например, в установленном Git for Windows):
 
@@ -84,12 +84,14 @@ py ios/scripts/prepare_signing.py package --directory C:\DepoCredSigning --certi
 | `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID из пункта 4 |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | Полный текст `.p8`, включая BEGIN/END и переносы строк; без Base64 |
 
-Во вкладке **Variables → New repository variable**:
+Публичные идентификаторы уже заданы по умолчанию в workflow и скриптах ветки `feature/native-ios`. Для этой карточки создавать **Variables** вручную не требуется:
 
-| Имя | Значение |
+| Имя | Значение по умолчанию |
 |---|---|
-| `IOS_BUNDLE_ID` | `ru.depocred.app` или зарегистрированный вами альтернативный Bundle ID |
-| `IOS_APP_STORE_ID` | Числовой Apple ID карточки из пункта 2 |
+| `IOS_BUNDLE_ID` | `com.depocred.app` |
+| `IOS_APP_STORE_ID` | `6766194530` |
+
+Если одноимённые Variables уже существуют, они имеют приоритет над значениями по умолчанию и должны совпадать с таблицей.
 
 Никакие ключи или пароли не добавляются через **Add file** в репозиторий.
 

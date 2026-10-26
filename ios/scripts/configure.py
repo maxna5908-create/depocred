@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 version = re.search(r'BUILD_VERSION\s*=\s*(\d+)', (ROOT / 'src/lib/version.ts').read_text()).group(1)
 run = os.environ.get('GITHUB_RUN_NUMBER', '0')
 attempt = os.environ.get('GITHUB_RUN_ATTEMPT', '1')
-bundle = os.environ.get('IOS_BUNDLE_ID') or 'ru.depocred.app'
-store = os.environ.get('IOS_APP_STORE_ID', '')
+bundle = os.environ.get('IOS_BUNDLE_ID') or 'com.depocred.app'
+store = os.environ.get('IOS_APP_STORE_ID') or '6766194530'
 assert re.fullmatch(r'[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+', bundle), 'Invalid bundle identifier'
 assert not store or store.isdecimal(), 'App Store ID must contain only digits'
 assert run.isdecimal() and attempt.isdecimal()
