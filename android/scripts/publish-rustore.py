@@ -144,7 +144,7 @@ def publish(args):
         if not any(int(v['versionId']) == args.resume_version for v in drafts):
             raise RuntimeError('resume_version is not a current draft')
         version = args.resume_version
-        api.request('PATCH', f'/public/v2/application/{PACKAGE}/version/{version}', json=payload)
+
     else:
         if drafts:
             raise RuntimeError('Existing draft preserved. Inspect it and pass its versionId as resume_version; creating a new draft could delete it.')
@@ -155,6 +155,8 @@ def publish(args):
     print(f'RuStore draft versionId={version}', flush=True)
     Path('rustore-result.json').write_text(json.dumps({'versionId': version, 'versionCode': args.version_code, 'publishType': 'INSTANTLY', 'partialValue': 100, 'submitted': False}))
     draft = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}')
+    if args.resume_version and any(draft.get(k) != payload[k] for k in ('appName', 'shortDescription', 'fullDescription', 'whatsNew', 'publishType')):
+        api.request('PATCH', f'/public/v2/application/{PACKAGE}/version/{version}', json=payload)
     print('Draft publication settings: ' + json.dumps({k: draft.get(k) for k in ('versionId', 'versionName', 'versionStatus', 'publishType', 'partialValue', 'packages')}, ensure_ascii=False), flush=True)
     packages = draft.get('packages') or []
     listed_draft = next((v for v in drafts if int(v['versionId']) == version), {})
