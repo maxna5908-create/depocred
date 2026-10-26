@@ -48,6 +48,20 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(api.request.call_count, 1)
         api.upload.assert_not_called()
 
+    def test_resume_keeps_apk_and_checks_rollout_via_status(self):
+        api = unittest.mock.Mock()
+        payload = {'appName': 'DepoCred', 'shortDescription': 'short', 'fullDescription': 'full', 'publishType': 'INSTANTLY', 'partialValue': 100}
+        draft = dict(payload, partialValue=None, packages=[{'verCode': 35}])
+        api.request.side_effect = [
+            {'content': [{'versionId': 1, 'versionCode': 26, 'versionStatus': 'ACTIVE'}, {'versionId': 2, 'versionCode': 35, 'versionStatus': 'DRAFT'}], 'totalPages': 1},
+            {'appId': p.APP_ID}, 2, draft, draft,
+            {'content': [{'versionId': 2, 'publishType': 'INSTANTLY', 'partialValue': 100}]}, None]
+        args = types.SimpleNamespace(metadata=Path('.'), images=Path('.'), apk=Path(__file__), version_code=35, resume_version=2)
+        with patch.object(p, 'API', return_value=api), patch.object(p, 'metadata', return_value=payload), patch.object(p, 'prepare_images', return_value=[]), patch.object(Path, 'write_text'):
+            p.publish(args)
+        api.upload.assert_not_called()
+        self.assertTrue(api.request.call_args.args[1].endswith('/2/commit'))
+
     def test_wrong_app_rejected_before_mutation(self):
         api = unittest.mock.Mock()
         api.request.side_effect = [{'content': [{'versionId': 1, 'versionCode': 26, 'versionStatus': 'ACTIVE'}], 'totalPages': 1}, {'appId': 7}]

@@ -155,10 +155,11 @@ def publish(args):
     print(f'RuStore draft versionId={version}', flush=True)
     Path('rustore-result.json').write_text(json.dumps({'versionId': version, 'versionCode': args.version_code, 'publishType': 'INSTANTLY', 'partialValue': 100, 'submitted': False}))
     draft = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}')
+    print('Draft publication settings: ' + json.dumps({k: draft.get(k) for k in ('versionId', 'versionName', 'versionStatus', 'publishType', 'partialValue', 'packages')}, ensure_ascii=False), flush=True)
     packages = draft.get('packages') or []
     if packages:
         # Resume only an identical version; never replace a manually uploaded APK silently.
-        if not all(int(p.get('versionCode', -1)) == args.version_code for p in packages):
+        if not all(int(p.get('verCode', -1)) == args.version_code for p in packages):
             raise RuntimeError('Draft contains a different/unknown APK version; preserved for inspection')
         print('Draft already contains the requested APK version; keeping it', flush=True)
     else:
@@ -168,9 +169,19 @@ def publish(args):
         api.upload(f'/public/v2/application/{PACKAGE}/version/{version}/image/screenshot/PORTRAIT/{index}/{kind}', file, 'image/jpeg')
         print(f'Uploaded {kind} {index + 1}/8', flush=True)
     draft = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}')
-    for key in ('appName', 'shortDescription', 'fullDescription', 'publishType', 'partialValue'):
+    for key in ('appName', 'shortDescription', 'fullDescription', 'publishType'):
         if draft.get(key) != payload[key]:
             raise RuntimeError(f'Draft verification failed for {key}; not submitted')
+    # The v2 detail response may omit rollout; verify against the version status endpoint.
+    status = api.request('GET', prefix, params={'ids': version})['content'][0]
+    print('Verified publication settings: ' + json.dumps({k: status.get(k) for k in ('versionId', 'publishType', 'partialValue')}, ensure_ascii=False), flush=True)
+    if status.get('publishType') != 'INSTANTLY':
+        raise RuntimeError('Automatic publication was not persisted')
+    if int(status.get('partialValue') or 0) != 100:
+        api.request('POST', f'{prefix}/{version}/publish-settings', json={'partialValue': 100})
+        status = api.request('GET', prefix, params={'ids': version})['content'][0]
+        if int(status.get('partialValue') or 0) != 100:
+            raise RuntimeError('100% rollout was not persisted; not submitted')
     api.request('POST', f'{prefix}/{version}/commit', params={'priorityUpdate': 0})
     result = {'versionId': version, 'versionCode': args.version_code, 'publishType': 'INSTANTLY', 'partialValue': 100, 'submitted': True}
     Path('rustore-result.json').write_text(json.dumps(result, indent=2))
