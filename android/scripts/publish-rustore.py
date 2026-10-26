@@ -114,7 +114,12 @@ def prepare_images(root, output):
 
 def publish(args):
     payload = metadata(args.metadata)
-    images = prepare_images(args.images, Path('rustore-images'))
+    prepared = prepare_images(args.images, Path('rustore-images'))
+    # RuStore's API uses one ordinal namespace (0..9) across device types.
+    # Preserve seven phone creatives and three representative tablet creatives.
+    images = [(i, k, f) for i, k, f in prepared if k == 'SCREENSHOT' and i < 7]
+    tablet_positions = {0: 7, 2: 8, 3: 9}
+    images += [(tablet_positions[i], k, f) for i, k, f in prepared if k == 'TABLET_SCREENSHOT' and i in tablet_positions]
     if not args.apk.is_file():
         raise ValueError('Signed APK is missing')
     api = API()
@@ -184,10 +189,10 @@ def publish(args):
         else:
             endpoint = f'/public/v2/application/{PACKAGE}/version/{version}/image/screenshot/PORTRAIT/{index}/{kind}'
         uploaded = api.upload(endpoint, file, 'image/jpeg')
-        print(f'Uploaded {kind} {index + 1}/8: ' + json.dumps({k: uploaded.get(k) for k in ('id', 'ordinal', 'type')} if isinstance(uploaded, dict) else uploaded), flush=True)
+        print(f'Uploaded {kind} at ordinal {index}: ' + json.dumps({k: uploaded.get(k) for k in ('id', 'ordinal', 'type')} if isinstance(uploaded, dict) else uploaded), flush=True)
     stored = screenshot_state()
     counts = {kind: sum(item.get('type') == kind for item in stored) for kind in ('SCREENSHOT', 'TABLET_SCREENSHOT')}
-    if any(count < 8 for count in counts.values()):
+    if counts != {'SCREENSHOT': 7, 'TABLET_SCREENSHOT': 3}:
         raise RuntimeError('RuStore screenshot persistence check failed: ' + str(counts))
     draft = api.request('GET', f'/public/v2/application/{PACKAGE}/version/{version}')
     for key in ('appName', 'shortDescription', 'fullDescription', 'publishType'):
@@ -210,7 +215,7 @@ def publish(args):
     print('Submitted to RuStore moderation; automatic publication to 100% after approval.', flush=True)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
-            stream.write(f'RuStore: versionCode **{args.version_code}**, draft **{version}** submitted for moderation. Automatic publication after approval (100%). Eight phone and eight tablet screenshots uploaded.\n')
+            stream.write(f'RuStore: versionCode **{args.version_code}**, draft **{version}** submitted for moderation. Automatic publication after approval (100%). Seven phone and three tablet screenshots uploaded.\n')
 
 
 if __name__ == '__main__':
