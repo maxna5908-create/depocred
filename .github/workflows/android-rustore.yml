@@ -109,8 +109,8 @@ jobs:
           tools_dir=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           "$tools_dir/apksigner" verify --print-certs "$apk" > apk-certificate.txt
           expected=027a5d3f0040a1dc7a521d34795881ff66ae49de32797a0a0d305e97393008c4
-          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apk-certificate.txt)
-          test "$actual" = "$expected"
+          actual=$(sed -n 's/^.*certificate SHA-256 digest: //p' apk-certificate.txt | sort -u)
+          test "$actual" = "$expected" || { echo "Unexpected APK certificate: $actual"; exit 1; }
           "$tools_dir/aapt" dump badging "$apk" > apk-badging.txt
           python - <<'PY'
           import os, re
