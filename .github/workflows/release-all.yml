@@ -1,0 +1,38 @@
+name: Release all stores
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish Android to both stores and submit iOS to App Review (false = checks and Android files only)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: depocred-all-stores
+  cancel-in-progress: false
+jobs:
+  build:
+    uses: maxna5908-create/depocred/.github/workflows/android.yml@feature/native-android
+    with:
+      release: true
+      publish: ${{ inputs.publish }}
+      source_ref: feature/native-android
+      track: production
+      status: completed
+      submit_review: true
+    secrets: inherit
+  rustore:
+    if: inputs.publish
+    needs: build
+    uses: maxna5908-create/depocred/.github/workflows/android-rustore.yml@feature/native-android
+    with:
+      source_run_id: ${{ github.run_id }}
+    secrets: inherit
+  ios:
+    uses: maxna5908-create/depocred/.github/workflows/ios.yml@feature/native-ios
+    with:
+      release: ${{ inputs.publish }}
+      submit_review: ${{ inputs.publish }}
+    secrets: inherit

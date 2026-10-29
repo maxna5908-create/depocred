@@ -6,11 +6,16 @@ on:
         description: Sign IPA and upload to TestFlight (requires Apple secrets)
         type: boolean
         default: false
+      submit_review:
+        description: Submit the uploaded build to App Review and release after approval
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   ios:
     uses: maxna5908-create/depocred/.github/workflows/ios.yml@feature/native-ios
     with:
-      release: ${{ inputs.release }}
+      release: ${{ inputs.release || inputs.submit_review }}
+      submit_review: ${{ inputs.submit_review }}
     secrets: inherit
