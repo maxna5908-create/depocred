@@ -38,7 +38,14 @@ class MainActivity : ComponentActivity() {
         // The launch window uses the platform splash theme; no legacy bar-color setters.
         setTheme(R.style.Theme_DepoCred)
         super.onCreate(savedInstanceState)
-        WindowCompat.enableEdgeToEdge(window)
+        // Keep legacy transparent colors in resources; the convenience helper still
+        // calls deprecated Window color setters and is flagged by Play Console.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
+        }
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         pendingFile = savedInstanceState?.getString("pendingPdf")?.let(::File)
         setContent { DepoCredApp(model, ::exportPdf, ::openLink, ::shareApp) }
