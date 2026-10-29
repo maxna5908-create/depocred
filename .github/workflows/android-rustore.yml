@@ -69,8 +69,14 @@ jobs:
           branch = run['head_branch']
           if branch not in ('feature/native-android', 'main') and not branch.startswith(('release/google-play/', 'release/rustore/', 'validation/android/')):
               raise SystemExit('Unexpected source branch')
-          if run['path'] == '.github/workflows/android.yml':
-              source_sha = run['head_sha']
+          artifacts_req = urllib.request.Request(f'https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(artifacts_req) as response:
+              artifacts = json.load(response)['artifacts']
+          has_provenance = any(a['name'] == 'android-source-provenance' and not a['expired'] for a in artifacts)
+          if not has_provenance:
+              if run['path'] != '.github/workflows/android.yml' or run['event'] != 'push':
+                  raise SystemExit('Build provenance artifact is required')
+              source_sha = run['head_sha']  # Historical direct push builds only.
           else:
               with tempfile.TemporaryDirectory() as folder:
                   subprocess.run(['gh', 'run', 'download', run_id, '--repo', repo, '--name', 'android-source-provenance', '--dir', folder], check=True)
