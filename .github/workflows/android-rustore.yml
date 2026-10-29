@@ -1,9 +1,6 @@
 name: Android RuStore
 
 on:
-  push:
-    branches: [release/rustore/**]
-    paths: [.github/workflows/android-rustore.yml, android/scripts/publish-rustore.py, android/store/rustore-release.json]
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -52,14 +49,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           python - <<'PY'
-          import json, os, urllib.request
+          import json, os, urllib.request, subprocess, tempfile, re
           from pathlib import Path
           run_id = os.environ['SOURCE_RUN_ID']
           resume = os.environ['RESUME_VERSION'] or '0'
-          if os.environ['EVENT_NAME'] == 'push':
-              config = json.loads(Path('android/store/rustore-release.json').read_text())
-              run_id = str(config['source_run_id'])
-              resume = str(config.get('resume_version', 0))
           if not run_id.isdigit() or not resume.isdigit():
               raise SystemExit('Run ID and resume version must be numeric')
           repo = os.environ['GITHUB_REPOSITORY']
@@ -68,20 +61,25 @@ jobs:
               run = json.load(response)
           if run['repository']['full_name'] != repo or run['head_repository']['full_name'] != repo:
               raise SystemExit('Artifacts must come from this repository')
-          if run['status'] != 'completed' or run['conclusion'] != 'success' or run['event'] not in ('push', 'workflow_dispatch'):
+          same_run = run_id == os.environ['GITHUB_RUN_ID'] and run['path'] == '.github/workflows/android-stores.yml'
+          if (not same_run and (run['status'] != 'completed' or run['conclusion'] != 'success')) or run['event'] not in ('push', 'workflow_dispatch'):
               raise SystemExit('Source build must be successful and cannot originate from a pull request')
-          if run['path'] not in ('.github/workflows/android.yml', '.github/workflows/android-google-play.yml'):
+          if run['path'] not in ('.github/workflows/android.yml', '.github/workflows/android-google-play.yml', '.github/workflows/android-stores.yml'):
               raise SystemExit('Unexpected source workflow')
           branch = run['head_branch']
-          if branch not in ('feature/native-android', 'main') and not branch.startswith(('release/google-play/', 'release/rustore/')):
+          if branch not in ('feature/native-android', 'main') and not branch.startswith(('release/google-play/', 'release/rustore/', 'validation/android/')):
               raise SystemExit('Unexpected source branch')
-          # Native Android artifacts are tied to a resolved commit. For the main launcher,
-          # use a direct native-branch run instead, avoiding ambiguous moving source_ref.
-          if run['path'] != '.github/workflows/android.yml':
-              raise SystemExit('Use a direct Native Android run from feature/native-android or a release branch')
+          if run['path'] == '.github/workflows/android.yml':
+              source_sha = run['head_sha']
+          else:
+              with tempfile.TemporaryDirectory() as folder:
+                  subprocess.run(['gh', 'run', 'download', run_id, '--repo', repo, '--name', 'android-source-provenance', '--dir', folder], check=True)
+                  source_sha = json.loads((Path(folder) / 'source.json').read_text())['sha']
+              if not re.fullmatch(r'[0-9a-f]{40}', source_sha):
+                  raise SystemExit('Invalid build provenance')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f"run_id={run_id}\nsha={run['head_sha']}\nresume={resume}\n")
-          print(f"Validated successful build {run_id}, commit {run['head_sha']}")
+              output.write(f"run_id={run_id}\nsha={source_sha}\nresume={resume}\n")
+          print(f"Validated successful build {run_id}, commit {source_sha}")
           PY
       - uses: actions/checkout@v4
         with:

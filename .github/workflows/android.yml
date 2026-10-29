@@ -2,7 +2,7 @@ name: Native Android
 
 on:
   push:
-    branches: [feature/native-android, release/google-play/**]
+    branches: [feature/native-android, validation/android/**]
     paths: [android/**, src/lib/version.ts, .github/workflows/android.yml]
   pull_request:
     paths: [android/**, src/lib/version.ts, .github/workflows/android.yml]
@@ -34,6 +34,9 @@ on:
         type: string
         default: ''
   workflow_call:
+    outputs:
+      source_sha:
+        value: ${{ jobs.resolve.outputs.sha }}
     inputs:
       release:
         type: boolean
@@ -61,6 +64,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: android-${{ github.ref }}
@@ -77,6 +81,20 @@ jobs:
           ref: ${{ inputs.source_ref || github.sha }}
       - id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Record build provenance
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          Path('source.json').write_text(json.dumps({'sha': os.environ['SOURCE_SHA']}))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-source-provenance
+          path: source.json
+          retention-days: 30
       - name: Validate publication options
         env:
           TRACK: ${{ inputs.track || 'production' }}
@@ -135,6 +153,11 @@ jobs:
         with:
           name: android-verification
           path: artifacts
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Prepare emulator with bounded download retries
+        run: bash android/scripts/prepare-emulator.sh 35
       - name: Enable Android VM acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -176,7 +199,7 @@ jobs:
           retention-days: 14
 
   release:
-    if: (github.event_name == 'workflow_dispatch' && (inputs.release || inputs.publish)) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/google-play/'))
+    if: (github.event_name == 'workflow_dispatch' && (inputs.release || inputs.publish)) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/validation/android/'))
     needs: [resolve, verify, device]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -225,7 +248,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/depocred.jks"
 
   google-play:
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/google-play/'))
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
     needs: [resolve, release, store-capture]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -332,6 +355,11 @@ jobs:
         with:
           name: android-verification
           path: artifacts
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Prepare emulator with bounded download retries
+        run: bash android/scripts/prepare-emulator.sh 35
       - name: Enable Android VM acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

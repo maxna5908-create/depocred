@@ -344,6 +344,13 @@ class NativeAppTest {
             assertEquals(!dark, controller.isAppearanceLightStatusBars)
             assertEquals(!dark, controller.isAppearanceLightNavigationBars)
         }
+        val insets = requireNotNull(ViewCompat.getRootWindowInsets(rule.activity.window.decorView))
+            .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+        val content = rule.onNodeWithTag("content").fetchSemanticsNode().boundsInRoot
+        val menu = rule.onNodeWithTag("bottom_menu").fetchSemanticsNode().boundsInRoot
+        assertTrue("Content must clear status bar/cutout", content.top >= insets.top)
+        assertTrue("Menu must clear navigation bar", menu.bottom <= bitmap.height - insets.bottom + 1)
+        assertTrue("Menu must clear side cutout", menu.left >= insets.left && menu.right <= bitmap.width - insets.right)
         val samples = mutableListOf(bitmap.width / 2 to 6)
         if (rule.activity.resources.configuration.smallestScreenWidthDp < 600) {
             samples += bitmap.width / 4 to bitmap.height - 6

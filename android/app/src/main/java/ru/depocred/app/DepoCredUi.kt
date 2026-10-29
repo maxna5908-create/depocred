@@ -132,7 +132,9 @@ internal val LocalPalette = staticCompositionLocalOf { Palette(false, Color(0xFF
                     gradientRadius = 2400f
                 }
             }
-            SideEffect { activity?.let { applyAppWindow(it, view, windowBackground, !dark && !splashVisible) } }
+            LaunchedEffect(activity, view, windowBackground, dark, splashVisible) {
+                activity?.let { applyAppWindow(it, view, windowBackground, !dark && !splashVisible) }
+            }
             var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
             val selected = (state.history + listOfNotNull(state.current)).firstOrNull { it.id == selectedId }
             val scope = rememberCoroutineScope()
@@ -221,18 +223,9 @@ private fun appTypography(): Typography {
 
 // The starting theme can be restored during Activity recreation. Keep the
 // window behind Compose in sync too, including areas reserved for system bars.
-@Suppress("DEPRECATION")
 private fun applyAppWindow(activity: android.app.Activity, view: android.view.View, background: android.graphics.drawable.Drawable, darkIcons: Boolean) {
     val window = activity.window
-    WindowCompat.setDecorFitsSystemWindows(window, false)
     window.setBackgroundDrawable(background)
-    window.statusBarColor = android.graphics.Color.TRANSPARENT
-    window.navigationBarColor = android.graphics.Color.TRANSPARENT
-    if (android.os.Build.VERSION.SDK_INT >= 28) window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
-    if (android.os.Build.VERSION.SDK_INT >= 29) {
-        window.isStatusBarContrastEnforced = false
-        window.isNavigationBarContrastEnforced = false
-    }
     WindowCompat.getInsetsController(window, view).apply {
         isAppearanceLightStatusBars = darkIcons
         isAppearanceLightNavigationBars = darkIcons
