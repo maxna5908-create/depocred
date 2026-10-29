@@ -10,7 +10,6 @@ import androidx.core.view.WindowCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.FileProvider
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,7 +35,8 @@ class MainActivity : ComponentActivity() {
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        // The launch window uses the platform splash theme; no legacy bar-color setters.
+        setTheme(R.style.Theme_DepoCred)
         super.onCreate(savedInstanceState)
         WindowCompat.enableEdgeToEdge(window)
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false

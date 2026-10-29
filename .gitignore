@@ -19,3 +19,7 @@ keystore.properties
 *.aab
 *.apks
 android/captures/
+
+# Python release-tool caches
+__pycache__/
+*.pyc

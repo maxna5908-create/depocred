@@ -61,10 +61,10 @@ jobs:
               run = json.load(response)
           if run['repository']['full_name'] != repo or run['head_repository']['full_name'] != repo:
               raise SystemExit('Artifacts must come from this repository')
-          same_run = run_id == os.environ['GITHUB_RUN_ID'] and run['path'] == '.github/workflows/android-stores.yml'
+          same_run = run_id == os.environ['GITHUB_RUN_ID'] and run['path'] in ('.github/workflows/android-stores.yml', '.github/workflows/release-all.yml')
           if (not same_run and (run['status'] != 'completed' or run['conclusion'] != 'success')) or run['event'] not in ('push', 'workflow_dispatch'):
               raise SystemExit('Source build must be successful and cannot originate from a pull request')
-          if run['path'] not in ('.github/workflows/android.yml', '.github/workflows/android-google-play.yml', '.github/workflows/android-stores.yml'):
+          if run['path'] not in ('.github/workflows/android.yml', '.github/workflows/android-google-play.yml', '.github/workflows/android-stores.yml', '.github/workflows/release-all.yml'):
               raise SystemExit('Unexpected source workflow')
           branch = run['head_branch']
           if branch not in ('feature/native-android', 'main') and not branch.startswith(('release/google-play/', 'release/rustore/', 'validation/android/')):
