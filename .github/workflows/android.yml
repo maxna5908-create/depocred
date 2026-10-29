@@ -67,8 +67,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: false
+  group: android-${{ github.event_name == 'workflow_dispatch' && 'release' || github.ref }}
+  # Superseded check builds can stop; explicit releases remain serialized.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   resolve:
