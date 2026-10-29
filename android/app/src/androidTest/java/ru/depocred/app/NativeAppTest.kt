@@ -56,6 +56,9 @@ class NativeAppTest {
     private fun calculate() {
         rule.onNodeWithTag("calculate").revealAndClick()
         rule.waitUntil(120000) { model.state.current != null }
+        // IME dismissal is asynchronous, especially on older Android versions.
+        keyboard(false)
+        rule.waitUntil(15000) { rule.onAllNodesWithTag("bottom_menu").fetchSemanticsNodes().isNotEmpty() }
     }
     private fun keyboard(visible: Boolean) {
         rule.waitUntil(15000) { ViewCompat.getRootWindowInsets(rule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == visible }

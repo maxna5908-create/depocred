@@ -11,7 +11,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -28,7 +29,7 @@ import kotlin.math.pow
 /** Deposit selectors have their own 24px card, as in DepositCalculator.tsx. */
 @Composable internal fun ChoiceDialog(title: String, selected: String, options: List<Pair<String, String>>, onClose: () -> Unit, descriptions: Map<String, String> = emptyMap(), onSelect: (String) -> Unit) {
     val p = LocalPalette.current
-    val height = LocalConfiguration.current.screenHeightDp.dp
+    val height = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val view = LocalView.current
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setDimAmount(.6f) }
@@ -68,7 +69,7 @@ import kotlin.math.pow
     confirm: String? = null, content: @Composable ColumnScope.() -> Unit
 ) {
     val p = LocalPalette.current
-    val height = LocalConfiguration.current.screenHeightDp.dp * .9f
+    val height = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * .9f
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             Modifier.padding(16.dp).widthIn(max = 512.dp).fillMaxWidth().heightIn(max = height).testTag(tag),
